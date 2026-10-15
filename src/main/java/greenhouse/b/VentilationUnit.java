@@ -3,10 +3,6 @@ package greenhouse.b;
 import greenhouse.b.RunRepository.VentilationState;
 import greenhouse.b.VentilationPolicy.Mode;
 
-/**
- * Сервис B: включает вентиляцию в нужном режиме и возвращает её в прежнее состояние (откат).
- * Прежний режим хранится в БД, поэтому откат работает и после рестарта.
- */
 public class VentilationUnit {
 
     private final RunRepository repository;
@@ -17,10 +13,6 @@ public class VentilationUnit {
         this.policy = policy;
     }
 
-    /**
-     * Включает режим, который требует политика. Если вентиляция уже была переключена и ещё
-     * не возвращена, исходный режим сохраняется — повторное включение его не затирает.
-     */
     public Mode engage(double temperatureC, double humidityPercent) {
         Mode target = policy.modeFor(temperatureC, humidityPercent);
         VentilationState state = repository.loadVentilation();
@@ -29,7 +21,6 @@ public class VentilationUnit {
         return target;
     }
 
-    /** Возвращает прежний режим. Если откатывать нечего — ничего не делает. */
     public Mode restore() {
         VentilationState state = repository.loadVentilation();
         if (state.previous() == null) {
@@ -39,10 +30,6 @@ public class VentilationUnit {
         return state.previous();
     }
 
-    /**
-     * Фиксирует текущий режим как итоговый: цикл завершён успешно, откатывать больше нечего.
-     * Без этого «прежний» режим предыдущего цикла мог бы по ошибке вернуться при откате следующего.
-     */
     public Mode commit() {
         VentilationState state = repository.loadVentilation();
         if (state.previous() != null) {

@@ -13,14 +13,8 @@ import greenhouse.c.NutrientDispenser;
 
 import java.util.List;
 
-/**
- * Узкий фасад для администратора: посмотреть всё сохранённое, откатить цикл вручную,
- * сбросить хранилище и включить/выключить имитацию сбоев B и C для демо.
- * Откат делегируется основному фасаду — это тот же проверенный код, а не вторая копия.
- */
 public class GreenhouseAdminFacade {
 
-    /** Снимок всего, что сейчас лежит на диске. */
     public record SystemState(List<CycleRecord> cycles, List<IrrigationSlot> slots,
                               List<IrrigationRun> runs, List<DosageRecord> dosages,
                               List<AlertService.Alert> alerts, VentilationPolicy.Mode ventilationMode) {}
@@ -49,7 +43,6 @@ public class GreenhouseAdminFacade {
         return cycles.findAll();
     }
 
-    /** Читает с диска состояние всех трёх подсистем и хода цепочек. */
     public SystemState inspect() {
         return new SystemState(
                 cycles.findAll(),
@@ -60,22 +53,18 @@ public class GreenhouseAdminFacade {
                 runs.loadVentilation().current());
     }
 
-    /** Ручной откат цикла по id. См. {@link GreenhouseFacade#compensate(long)}. */
     public CycleRecord compensate(long cycleId) {
         return facade.compensate(cycleId);
     }
 
-    /** Имитация отказа насоса: следующий шаг B завершится сбоем (откат A). */
     public void simulatePumpFailure(boolean faulty) {
         irrigation.simulatePumpFailure(faulty);
     }
 
-    /** Имитация отказа дозатора: следующий шаг C завершится сбоем (откат B, затем A). */
     public void simulateDispenserFailure(boolean faulty) {
         dispenser.simulateDispenserFailure(faulty);
     }
 
-    /** Полный сброс: очищает хранилища A, B, C и ход цепочек, снимает имитацию сбоев. */
     public void resetAll() {
         slots.clear();
         runs.clear();

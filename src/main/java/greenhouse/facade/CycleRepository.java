@@ -11,14 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Хранение хода цепочки на диске (таблица cycles в SQLite) — для восстановления после рестарта.
- * Соединение открывается на каждую операцию, поэтому «рестарт» — это новый CycleRepository
- * на тот же файл.
- */
 public class CycleRepository {
 
-    /** Ошибка хранилища (не бизнес-ошибка). */
     public static class StorageException extends RuntimeException {
         public StorageException(String message, Throwable cause) {
             super(cause == null || cause.getMessage() == null ? message : message + ": " + cause.getMessage(), cause);
@@ -58,7 +52,6 @@ public class CycleRepository {
         }
     }
 
-    /** Вставляет новую запись (id == null) или обновляет изменяемые поля существующей. */
     public void save(CycleRecord cycle) {
         try (Connection c = open()) {
             if (cycle.getId() == null) {
@@ -117,7 +110,6 @@ public class CycleRepository {
         return query("SELECT " + COLUMNS + " FROM cycles ORDER BY id");
     }
 
-    /** Незавершённые цепочки (PENDING_B / PENDING_C) — то, что оборвалось и ждёт решения. */
     public List<CycleRecord> findInFlight() {
         return query("SELECT " + COLUMNS + " FROM cycles WHERE status IN ('PENDING_B', 'PENDING_C') ORDER BY id");
     }
@@ -172,7 +164,6 @@ public class CycleRepository {
         }
     }
 
-    /** Полный сброс хода цепочек (для CLI и тестов). */
     public void clear() {
         try (Connection c = open(); Statement s = c.createStatement()) {
             s.execute("DELETE FROM cycles");

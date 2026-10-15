@@ -1,21 +1,10 @@
 package greenhouse.facade;
 
-/**
- * Запись о ходе одной цепочки A → B → C. Хранится на диске, поэтому после рестарта фасад
- * по ней (а не по памяти) понимает, что уже сделано и что нужно откатить.
- *
- *   PENDING_B --> PENDING_C --> COMPLETED
- *   PENDING_B --------------> COMPENSATED
- *   PENDING_C --------------> COMPENSATED
- *
- * COMPLETED и COMPENSATED — конечные состояния. Идентификаторы объектов подсистем
- * (слот A, запуск B, доза и оповещение C) записываются сразу, как только они появились.
- */
 public class CycleRecord {
 
     public enum Status { PENDING_B, PENDING_C, COMPLETED, COMPENSATED }
 
-    private Long id;               // null, пока запись не сохранена
+    private Long id;
     private final String bedId;
     private final String crop;
     private final double temperatureC;
@@ -43,7 +32,6 @@ public class CycleRecord {
         this.failureReason = failureReason;
     }
 
-    /** Шаг A выполнен (слот зарезервирован) — цепочка ждёт шага B. */
     public static CycleRecord begin(String bedId, String crop, double temperatureC,
                                     double humidityPercent, long slotId) {
         if (bedId == null || bedId.isBlank()) {
@@ -56,7 +44,6 @@ public class CycleRecord {
                 Status.PENDING_B, slotId, null, null, null, null);
     }
 
-    /** Восстановление из хранилища — это уже сохранённое состояние, переходы не проверяются. */
     static CycleRecord restore(long id, String bedId, String crop, double temperatureC,
                                double humidityPercent, Status status, long slotId, Long runId,
                                Long dosageId, Long alertId, String failureReason) {
@@ -64,13 +51,11 @@ public class CycleRecord {
                 runId, dosageId, alertId, failureReason);
     }
 
-    /** Запуск полива B создан (шаг B ещё не закончен). */
     public void attachRun(long runId) {
         requireStatus(Status.PENDING_B, "attach a run");
         this.runId = runId;
     }
 
-    /** Шаг B полностью выполнен — цепочка ждёт шага C. */
     public void advanceToPendingC() {
         requireStatus(Status.PENDING_B, "advance to PENDING_C");
         status = Status.PENDING_C;
@@ -99,11 +84,6 @@ public class CycleRecord {
         failureReason = reason;
     }
 
-    /**
-     * Самый дальний шаг, до которого цепочка реально дошла, — считается по тому, что записано,
-     * а не по памяти: есть доза или оповещение → C; есть запуск полива или статус PENDING_C → B;
-     * иначе только A.
-     */
     public ChainStep farthestStep() {
         if (dosageId != null || alertId != null) {
             return ChainStep.C;
@@ -114,7 +94,6 @@ public class CycleRecord {
         return ChainStep.A;
     }
 
-    /** Цепочка ещё не закончена: её либо надо откатить, либо она оборвалась на рестарте. */
     public boolean isInFlight() {
         return status == Status.PENDING_B || status == Status.PENDING_C;
     }

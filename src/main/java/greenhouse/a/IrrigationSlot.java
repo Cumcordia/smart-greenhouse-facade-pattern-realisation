@@ -1,17 +1,10 @@
 package greenhouse.a;
 
-/**
- * Сущность A: слот полива для грядки. Сама следит за допустимыми переходами статуса,
- * независимо от того, кто её вызывает (фасад, тест или main).
- *
- *   RESERVED --> CONFIRMED --> RELEASED
- *   RESERVED ----------------> RELEASED
- */
 public class IrrigationSlot {
 
     public enum Status { RESERVED, CONFIRMED, RELEASED }
 
-    private Long id;               // null, пока слот не сохранён в БД
+    private Long id;
     private final String bedId;
     private final double liters;
     private Status status;
@@ -23,7 +16,6 @@ public class IrrigationSlot {
         this.status = status;
     }
 
-    /** Новый слот всегда начинает со статуса RESERVED. */
     public static IrrigationSlot reserve(String bedId, double liters) {
         if (bedId == null || bedId.isBlank()) {
             throw new IllegalArgumentException("bedId must not be blank");
@@ -34,7 +26,6 @@ public class IrrigationSlot {
         return new IrrigationSlot(null, bedId, liters, Status.RESERVED);
     }
 
-    /** Восстановление из хранилища — переходы не проверяются, это уже сохранённое состояние. */
     static IrrigationSlot restore(long id, String bedId, double liters, Status status) {
         return new IrrigationSlot(id, bedId, liters, status);
     }
@@ -53,10 +44,6 @@ public class IrrigationSlot {
         status = Status.RELEASED;
     }
 
-    /**
-     * Активный слот занимает грядку, пока цикл идёт (RESERVED). Подтверждённый слот — это уже
-     * завершённый успешный цикл, он грядку не блокирует и следующий цикл возможен.
-     */
     public boolean isActive() {
         return status == Status.RESERVED;
     }

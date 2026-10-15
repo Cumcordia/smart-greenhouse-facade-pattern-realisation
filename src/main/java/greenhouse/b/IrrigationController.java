@@ -2,15 +2,6 @@ package greenhouse.b;
 
 import java.util.regex.Pattern;
 
-/**
- * Сервис B: запускает и останавливает полив, а также откатывает запуск (откат B).
- * Подсистема B ничего не знает про A: на вход приходят обычные значения (грядка, литры).
- *
- * Ошибки:
- *  - IllegalArgumentException — плохой ввод (формат грядки, литры, неизвестный запуск);
- *  - IllegalStateException    — правило не позволяет действие (грядка уже поливается,
- *                               отказ насоса, недопустимый переход статуса).
- */
 public class IrrigationController {
 
     private static final Pattern BED_ID = Pattern.compile("[A-Za-z]-\\d+");
@@ -22,7 +13,6 @@ public class IrrigationController {
         this.repository = repository;
     }
 
-    /** Имитация отказа насоса — нужна для сценария «принудительный сбой B» и для тестов. */
     public void simulatePumpFailure(boolean faulty) {
         this.pumpFaulty = faulty;
     }
@@ -46,7 +36,6 @@ public class IrrigationController {
         return run;
     }
 
-    /** Полив успешно завершён (вызывается, когда вся цепочка прошла). */
     public IrrigationRun complete(long runId) {
         IrrigationRun run = load(runId);
         run.complete();
@@ -54,11 +43,6 @@ public class IrrigationController {
         return run;
     }
 
-    /**
-     * Откат B: останавливает полив. Идемпотентен для уже остановленного запуска —
-     * фасад может безопасно доводить откат после рестарта. Завершённый (COMPLETED)
-     * запуск остановить нельзя: это IllegalStateException.
-     */
     public IrrigationRun abort(long runId) {
         IrrigationRun run = load(runId);
         if (run.getStatus() == IrrigationRun.Status.ABORTED) {

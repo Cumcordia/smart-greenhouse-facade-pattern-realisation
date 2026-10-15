@@ -29,16 +29,10 @@ import greenhouse.facade.exceptions.NutrientFailedException;
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * Тестовый «язык» теплицы: тест читается как предложение предметной области, например
- * {@code onFreshDatabase(dir).givenDryBed("B-3").whenIrrigationPumpFails().thenSlotIsReleased()}.
- * Каждый DSL создаёт свежий файл БД, поэтому тесты независимы друг от друга.
- */
 public class GreenhouseDsl {
 
     private final String dbPath;
 
-    // собранная система — публичная, чтобы тесты могли дотянуться до нужной подсистемы
     public SlotRepository slots;
     public SoilSensorArray sensors;
     public IrrigationScheduler scheduler;
@@ -52,14 +46,12 @@ public class GreenhouseDsl {
     public GreenhouseFacade facade;
     public GreenhouseAdminFacade admin;
 
-    // ввод сценария
     private String bed = "B-3";
     private double moisture = 20;
     private String crop = "tomato";
     private double temperature = 26;
     private double humidity = 50;
 
-    // результат последнего действия
     private CycleRecord cycle;
     private GreenhouseException failure;
     private List<CycleRecord> recovered = List.of();
@@ -73,7 +65,6 @@ public class GreenhouseDsl {
         return new GreenhouseDsl(dir);
     }
 
-    /** Собирает всю систему поверх файла БД; повторный вызов — это «рестарт приложения». */
     private void wire() {
         slots = new SlotRepository(dbPath);
         sensors = new SoilSensorArray(slots);
@@ -88,8 +79,6 @@ public class GreenhouseDsl {
         facade = new GreenhouseFacade(sensors, scheduler, irrigation, ventilation, dispenser, alerts, cycles);
         admin = new GreenhouseAdminFacade(facade, cycles, slots, runs, dosages, irrigation, dispenser);
     }
-
-    // ---------- given ----------
 
     public GreenhouseDsl givenDryBed(String bedId) {
         this.bed = bedId;
@@ -114,13 +103,11 @@ public class GreenhouseDsl {
         return this;
     }
 
-    /** Приложение «упало» после шага B: слот зарезервирован, полив идёт, вентиляция включена. */
     public GreenhouseDsl givenCycleInterruptedAfterStepB() {
         buildInterruptedCycle(false);
         return this;
     }
 
-    /** Приложение «упало» в шаге C: доза выдана и оповещение создано, но цикл не завершён. */
     public GreenhouseDsl givenCycleInterruptedAfterDosage() {
         buildInterruptedCycle(true);
         return this;
@@ -143,8 +130,6 @@ public class GreenhouseDsl {
         cycles.save(record);
     }
 
-    // ---------- when ----------
-
     public GreenhouseDsl whenCycleRuns() {
         runCycle();
         return this;
@@ -162,7 +147,6 @@ public class GreenhouseDsl {
         return this;
     }
 
-    /** Закрыть и заново открыть БД: новые репозитории, сервисы и фасады поверх того же файла. */
     public GreenhouseDsl whenApplicationRestarts() {
         wire();
         return this;
@@ -183,8 +167,6 @@ public class GreenhouseDsl {
         }
     }
 
-    // ---------- then: цикл ----------
-
     public GreenhouseDsl thenCycleCompleted() {
         assertNull(failure, () -> "Unexpected failure: " + failure);
         assertNotNull(cycle);
@@ -199,7 +181,6 @@ public class GreenhouseDsl {
         return this;
     }
 
-    /** Исключение B или C ссылается на тот самый откаченный цикл, что лежит на диске. */
     public GreenhouseDsl thenFailureCarriesTheCompensatedCycleId() {
         long expected = onlyCycle().getId();
         if (failure instanceof IrrigationFailedException e) {
@@ -239,8 +220,6 @@ public class GreenhouseDsl {
         assertTrue(dosages.findAllAlerts().isEmpty(), "alerts");
         return this;
     }
-
-    // ---------- then: подсистемы ----------
 
     public GreenhouseDsl thenSlotIs(IrrigationSlot.Status status) {
         assertEquals(1, slots.findAll().size(), "expected exactly one slot");

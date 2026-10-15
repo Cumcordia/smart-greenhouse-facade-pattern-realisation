@@ -10,7 +10,6 @@ class DosageCalculatorTest {
 
     @Test
     void doseIsProportionalToWaterVolume() {
-        // 80 л * 120 г / 100 л = 96 г
         assertEquals(96.0, calculator.gramsFor(Crop.TOMATO, 80), 1e-9);
     }
 
@@ -23,15 +22,12 @@ class DosageCalculatorTest {
 
     @Test
     void doseIsRoundedToOneDecimal() {
-        // 33 л * 120 / 100 = 39.6
         assertEquals(39.6, calculator.gramsFor(Crop.TOMATO, 33), 1e-9);
-        // 7.77 л * 60 / 100 = 4.662 -> 4.7
         assertEquals(4.7, calculator.gramsFor(Crop.LETTUCE, 7.77), 1e-9);
     }
 
     @Test
     void doseIsCapped() {
-        // 250 л * 120 / 100 = 300 г -> потолок
         assertEquals(DosageCalculator.MAX_GRAMS, calculator.gramsFor(Crop.TOMATO, 250), 1e-9);
     }
 

@@ -32,24 +32,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
 
-/**
- * Консольная демка теплицы. Запуск: {@code mvn compile exec:java}
- * (путь к файлу БД — необязательный аргумент, по умолчанию greenhouse.db в текущей папке).
- *
- * Через меню можно прогнать цепочку A → B → C с реальным вводом, посмотреть всё, что лежит
- * на диске, включить имитацию сбоя B или C, откатить цикл вручную, смоделировать обрыв
- * посреди цепочки и сбросить хранилище.
- */
 public class Main {
 
-    /** Ввод закрыт (Ctrl+D / конец файла) — выходим из программы. */
     private static class InputClosed extends RuntimeException {}
 
     private final String dbPath;
     private final Scanner in;
     private final PrintStream out;
 
-    // подсистемы (нужны только для симуляции обрыва цепочки)
     private final SoilSensorArray sensors;
     private final IrrigationScheduler scheduler;
     private final IrrigationController irrigation;
@@ -58,7 +48,6 @@ public class Main {
     private final AlertService alerts;
     private final CycleRepository cycles;
 
-    // фасады — всё остальное клиент делает только через них
     private final GreenhouseFacade facade;
     private final GreenhouseAdminFacade admin;
 
@@ -92,8 +81,6 @@ public class Main {
         String dbPath = args.length > 0 ? args[0] : "greenhouse.db";
         new Main(dbPath, System.in, System.out).run();
     }
-
-    // ------------------------------------------------------------------ главный цикл
 
     public void run() {
         out.println("=== Smart Greenhouse ===   database file: " + dbPath);
@@ -148,8 +135,6 @@ public class Main {
         out.println(" 0) Exit");
         out.println("----------------------------------------------");
     }
-
-    // ------------------------------------------------------------------ действия меню
 
     private void runCycle() {
         CycleRequest request = readRequest();
@@ -208,11 +193,6 @@ public class Main {
         out.println("Storage is clean, simulated failures are switched off.");
     }
 
-    /**
-     * Для демо восстановления: имитирует падение приложения посреди цепочки. Всё, что успело
-     * произойти, записано на диск, цикл остаётся незавершённым. Дальше можно нажать 6 или выйти
-     * и запустить программу заново — при старте она найдёт оборванный цикл.
-     */
     private void simulateCrash() {
         out.println("1) crash right after step B (slot reserved, pump running, ventilation on)");
         out.println("2) crash during step C (dose dispensed, alert created, cycle not finished)");
@@ -247,7 +227,6 @@ public class Main {
         out.println("Use option 6 now, or exit and start the program again to see recovery on startup.");
     }
 
-    /** При старте: если на диске остались незавершённые цепочки — предложить откатить. */
     private void offerRecovery() {
         List<CycleRecord> inFlight = admin.listCycles().stream().filter(CycleRecord::isInFlight).toList();
         if (inFlight.isEmpty()) {
@@ -262,8 +241,6 @@ public class Main {
             out.println("Left as is. Use option 6 or 5 later.");
         }
     }
-
-    // ------------------------------------------------------------------ вывод состояния
 
     private void printState() {
         SystemState s = admin.inspect();
@@ -329,8 +306,6 @@ public class Main {
     private static String dash(Long id) {
         return id == null ? "-" : String.valueOf(id);
     }
-
-    // ------------------------------------------------------------------ ввод
 
     private CycleRequest readRequest() {
         out.println("(press Enter to accept the value in brackets; try moisture 55 to see a rejected cycle)");

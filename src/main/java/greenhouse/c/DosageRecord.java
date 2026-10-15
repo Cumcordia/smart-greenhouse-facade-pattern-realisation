@@ -1,18 +1,10 @@
 package greenhouse.c;
 
-/**
- * Сущность C: одна доза удобрения. Сама следит за допустимыми переходами статуса.
- *
- *   PLANNED --> DISPENSED --> REVERTED
- *   PLANNED ---------------> REVERTED
- *
- * REVERTED — конечное состояние.
- */
 public class DosageRecord {
 
     public enum Status { PLANNED, DISPENSED, REVERTED }
 
-    private Long id;               // null, пока запись не сохранена в БД
+    private Long id;
     private final String bedId;
     private final DosageCalculator.Crop crop;
     private final double waterLiters;
@@ -29,7 +21,6 @@ public class DosageRecord {
         this.status = status;
     }
 
-    /** Новая доза всегда начинается со статуса PLANNED. */
     public static DosageRecord plan(String bedId, DosageCalculator.Crop crop, double waterLiters, double grams) {
         if (bedId == null || bedId.isBlank()) {
             throw new IllegalArgumentException("bedId must not be blank");
@@ -43,7 +34,6 @@ public class DosageRecord {
         return new DosageRecord(null, bedId, crop, waterLiters, grams, Status.PLANNED);
     }
 
-    /** Восстановление из хранилища — это уже сохранённое состояние, переходы не проверяются. */
     static DosageRecord restore(long id, String bedId, DosageCalculator.Crop crop,
                                 double waterLiters, double grams, Status status) {
         return new DosageRecord(id, bedId, crop, waterLiters, grams, status);

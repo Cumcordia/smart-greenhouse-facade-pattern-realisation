@@ -10,14 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Шлюз подсистемы C к SQLite. Таблицы: dosages (дозы удобрения) и alerts (оповещения).
- * Соединение открывается на каждую операцию, поэтому «рестарт» — это просто
- * новый DosageRepository на тот же файл.
- */
 public class DosageRepository {
 
-    /** Ошибка хранилища (не бизнес-ошибка). */
     public static class StorageException extends RuntimeException {
         public StorageException(String message, Throwable cause) {
             super(cause == null || cause.getMessage() == null ? message : message + ": " + cause.getMessage(), cause);
@@ -53,9 +47,6 @@ public class DosageRepository {
         }
     }
 
-    // ---------- dosages ----------
-
-    /** Вставляет новую дозу (id == null) или обновляет статус существующей. */
     public void save(DosageRecord record) {
         try (Connection c = open()) {
             if (record.getId() == null) {
@@ -124,9 +115,6 @@ public class DosageRepository {
                 DosageRecord.Status.valueOf(rs.getString("status")));
     }
 
-    // ---------- alerts ----------
-
-    /** Вставляет оповещение и возвращает его id. */
     public long insertAlert(String message, AlertService.Status status) {
         try (Connection c = open();
              PreparedStatement ps = c.prepareStatement(
@@ -187,7 +175,6 @@ public class DosageRepository {
                 AlertService.Status.valueOf(rs.getString("status")));
     }
 
-    /** Полный сброс хранилища C (для CLI и тестов). */
     public void clear() {
         try (Connection c = open(); Statement s = c.createStatement()) {
             s.execute("DELETE FROM dosages");

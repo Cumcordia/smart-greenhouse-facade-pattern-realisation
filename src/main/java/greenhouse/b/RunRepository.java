@@ -11,21 +11,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Шлюз подсистемы B к SQLite. Таблицы: runs (запуски полива) и ventilation (одна строка
- * с текущим и прежним режимом вентиляции). Соединение открывается на каждую операцию,
- * поэтому «рестарт» — это просто новый RunRepository на тот же файл.
- */
 public class RunRepository {
 
-    /** Ошибка хранилища (не бизнес-ошибка). */
     public static class StorageException extends RuntimeException {
         public StorageException(String message, Throwable cause) {
             super(cause == null || cause.getMessage() == null ? message : message + ": " + cause.getMessage(), cause);
         }
     }
 
-    /** Состояние вентиляции: текущий режим и режим, к которому нужно вернуться (null, если откатывать нечего). */
     public record VentilationState(VentilationPolicy.Mode current, VentilationPolicy.Mode previous) {}
 
     private final String url;
@@ -55,9 +48,6 @@ public class RunRepository {
         }
     }
 
-    // ---------- runs ----------
-
-    /** Вставляет новый запуск (id == null) или обновляет статус существующего. */
     public void save(IrrigationRun run) {
         try (Connection c = open()) {
             if (run.getId() == null) {
@@ -99,7 +89,6 @@ public class RunRepository {
         }
     }
 
-    /** Запуск грядки в статусе STARTED, если такой есть. */
     public Optional<IrrigationRun> findActiveByBed(String bedId) {
         try (Connection c = open();
              PreparedStatement ps = c.prepareStatement(
@@ -136,9 +125,6 @@ public class RunRepository {
                 IrrigationRun.Status.valueOf(rs.getString("status")));
     }
 
-    // ---------- ventilation ----------
-
-    /** Если строки ещё нет — вентиляция выключена и откатывать нечего. */
     public VentilationState loadVentilation() {
         try (Connection c = open();
              Statement s = c.createStatement();
@@ -171,7 +157,6 @@ public class RunRepository {
         }
     }
 
-    /** Полный сброс хранилища B (для CLI и тестов). */
     public void clear() {
         try (Connection c = open(); Statement s = c.createStatement()) {
             s.execute("DELETE FROM runs");

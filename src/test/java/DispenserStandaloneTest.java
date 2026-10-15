@@ -7,10 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import greenhouse.c.*;
 
-/**
- * Подсистема C сама по себе, без фасада и без A/B.
- * Каждый тест получает свежий файл БД (@TempDir).
- */
 class DispenserStandaloneTest {
 
     @TempDir
@@ -28,8 +24,6 @@ class DispenserStandaloneTest {
         dispenser = new NutrientDispenser(repository, new DosageCalculator());
         alerts = new AlertService(repository);
     }
-
-    // ---------- dispenser ----------
 
     @Test
     void dispenseCreatesPersistedDosage() {
@@ -85,8 +79,6 @@ class DispenserStandaloneTest {
         assertThrows(IllegalArgumentException.class, () -> dispenser.revert(999));
     }
 
-    // ---------- alerts ----------
-
     @Test
     void alertGoesFromCreatedToSentToCancelled() {
         Alert created = alerts.create("Fertilizer dispensed for B-3");
@@ -136,8 +128,6 @@ class DispenserStandaloneTest {
         assertEquals(2, alerts.list().size());
         assertEquals("first", alerts.list().get(0).message());
     }
-
-    // ---------- persistence ----------
 
     @Test
     void stateSurvivesRestart() {

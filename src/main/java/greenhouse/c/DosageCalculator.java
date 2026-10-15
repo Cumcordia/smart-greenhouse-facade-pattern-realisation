@@ -1,12 +1,7 @@
 package greenhouse.c;
 
-/**
- * Чистая бизнес-логика подсистемы C: сколько граммов удобрения нужно
- * на заданный объём воды для данной культуры. Ничего не хранит.
- */
 public class DosageCalculator {
 
-    /** Культура и норма удобрения в граммах на 100 литров воды. */
     public enum Crop {
         TOMATO(120.0),
         CUCUMBER(100.0),
@@ -23,7 +18,6 @@ public class DosageCalculator {
             return gramsPer100Liters;
         }
 
-        /** Разбирает название без учёта регистра и пробелов; бросает IllegalArgumentException. */
         public static Crop fromName(String name) {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("Crop must not be blank");
@@ -37,10 +31,8 @@ public class DosageCalculator {
         }
     }
 
-    /** Потолок разовой дозы, г. */
     public static final double MAX_GRAMS = 200.0;
 
-    /** Доза в граммах, округлённая до 0.1 г и ограниченная MAX_GRAMS. */
     public double gramsFor(Crop crop, double waterLiters) {
         if (crop == null) {
             throw new IllegalArgumentException("Crop must not be null");

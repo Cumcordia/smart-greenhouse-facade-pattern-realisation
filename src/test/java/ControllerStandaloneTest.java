@@ -7,10 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import greenhouse.b.*;
 
-/**
- * Подсистема B сама по себе, без фасада и без A/C.
- * Каждый тест получает свежий файл БД (@TempDir).
- */
 class ControllerStandaloneTest {
 
     @TempDir
@@ -28,8 +24,6 @@ class ControllerStandaloneTest {
         controller = new IrrigationController(repository);
         ventilation = new VentilationUnit(repository, new VentilationPolicy());
     }
-
-    // ---------- irrigation ----------
 
     @Test
     void startCreatesPersistedRun() {
@@ -108,8 +102,6 @@ class ControllerStandaloneTest {
         assertThrows(IllegalArgumentException.class, () -> controller.abort(999));
     }
 
-    // ---------- ventilation ----------
-
     @Test
     void ventilationStartsOff() {
         assertEquals(Mode.OFF, ventilation.currentMode());
@@ -167,23 +159,19 @@ class ControllerStandaloneTest {
         assertEquals(Mode.OFF, ventilation.currentMode());
     }
 
-    // ---------- persistence ----------
 
     @Test
     void stateSurvivesRestart() {
         long id = controller.start("B-3", 80).getId();
         ventilation.engage(32, 50);
 
-        // «рестарт»: новые объекты поверх того же файла
         RunRepository reopened = new RunRepository(dbPath);
         IrrigationController restartedController = new IrrigationController(reopened);
         VentilationUnit restartedVentilation = new VentilationUnit(reopened, new VentilationPolicy());
 
         assertEquals(IrrigationRun.Status.STARTED, reopened.findById(id).orElseThrow().getStatus());
         assertEquals(Mode.HIGH, restartedVentilation.currentMode());
-        // грядка по-прежнему занята
         assertThrows(IllegalStateException.class, () -> restartedController.start("B-3", 50));
-        // и откат после рестарта работает
         restartedController.abort(id);
         assertEquals(Mode.OFF, restartedVentilation.restore());
     }

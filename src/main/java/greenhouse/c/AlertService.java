@@ -2,15 +2,6 @@ package greenhouse.c;
 
 import java.util.List;
 
-/**
- * Сервис C: создаёт, отправляет и отменяет оповещения.
- *
- *   CREATED --> SENT --> CANCELLED
- *   CREATED -----------> CANCELLED
- *
- * Ошибки: IllegalArgumentException — плохой ввод (пустой текст, неизвестное оповещение);
- *         IllegalStateException — недопустимый переход.
- */
 public class AlertService {
 
     public enum Status { CREATED, SENT, CANCELLED }
@@ -39,10 +30,6 @@ public class AlertService {
         return update(alert, Status.SENT);
     }
 
-    /**
-     * Отмена оповещения (откат C). Идемпотентна: повторный вызов для уже отменённого
-     * оповещения ничего не меняет, чтобы фасад мог безопасно доводить откат после рестарта.
-     */
     public Alert cancel(long alertId) {
         Alert alert = load(alertId);
         if (alert.status() == Status.CANCELLED) {

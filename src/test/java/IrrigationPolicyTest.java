@@ -24,13 +24,11 @@ class IrrigationPolicyTest {
 
     @Test
     void litersAreProportionalToMoistureDeficit() {
-        // (60 - 20) * 2.0 = 80
         assertEquals(80.0, policy.litersFor(20), 1e-9);
     }
 
     @Test
     void litersAreCapped() {
-        // (60 - 0) * 2.0 = 120 -> ниже потолка 150, поэтому берём свою политику с потолком 100
         IrrigationPolicy capped = new IrrigationPolicy(35, 60, 2.0, 100);
         assertEquals(100.0, capped.litersFor(0), 1e-9);
     }

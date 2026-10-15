@@ -1,18 +1,10 @@
 package greenhouse.b;
 
-/**
- * Сущность B: один запуск полива. Сама следит за допустимыми переходами статуса.
- *
- *   STARTED --> COMPLETED
- *   STARTED --> ABORTED
- *
- * COMPLETED и ABORTED — конечные состояния.
- */
 public class IrrigationRun {
 
     public enum Status { STARTED, COMPLETED, ABORTED }
 
-    private Long id;               // null, пока запуск не сохранён в БД
+    private Long id;
     private final String bedId;
     private final double liters;
     private Status status;
@@ -24,7 +16,6 @@ public class IrrigationRun {
         this.status = status;
     }
 
-    /** Новый запуск всегда начинается со статуса STARTED. */
     public static IrrigationRun start(String bedId, double liters) {
         if (bedId == null || bedId.isBlank()) {
             throw new IllegalArgumentException("bedId must not be blank");
@@ -35,7 +26,6 @@ public class IrrigationRun {
         return new IrrigationRun(null, bedId, liters, Status.STARTED);
     }
 
-    /** Восстановление из хранилища — это уже сохранённое состояние, переходы не проверяются. */
     static IrrigationRun restore(long id, String bedId, double liters, Status status) {
         return new IrrigationRun(id, bedId, liters, status);
     }
@@ -54,7 +44,6 @@ public class IrrigationRun {
         status = Status.ABORTED;
     }
 
-    /** Активный запуск занимает грядку: поливается прямо сейчас. */
     public boolean isActive() {
         return status == Status.STARTED;
     }

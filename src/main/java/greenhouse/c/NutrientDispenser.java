@@ -2,15 +2,6 @@ package greenhouse.c;
 
 import java.util.regex.Pattern;
 
-/**
- * Сервис C: дозирует удобрение и откатывает дозу.
- * Подсистема C ничего не знает про A и B: на вход приходят обычные значения
- * (грядка, объём воды в литрах, название культуры).
- *
- * Ошибки:
- *  - IllegalArgumentException — плохой ввод (грядка, объём воды, культура, неизвестная доза);
- *  - IllegalStateException    — отказ дозатора или недопустимый переход статуса.
- */
 public class NutrientDispenser {
 
     private static final Pattern BED_ID = Pattern.compile("[A-Za-z]-\\d+");
@@ -24,7 +15,6 @@ public class NutrientDispenser {
         this.calculator = calculator;
     }
 
-    /** Имитация отказа дозатора — нужна для сценария «принудительный сбой C» и для тестов. */
     public void simulateDispenserFailure(boolean faulty) {
         this.dispenserFaulty = faulty;
     }
@@ -46,10 +36,6 @@ public class NutrientDispenser {
         return record;
     }
 
-    /**
-     * Откат C: возвращает дозу (статус REVERTED). Идемпотентен для уже возвращённой дозы —
-     * фасад может безопасно доводить откат после рестарта.
-     */
     public DosageRecord revert(long dosageId) {
         DosageRecord record = repository.findById(dosageId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown dosage " + dosageId));

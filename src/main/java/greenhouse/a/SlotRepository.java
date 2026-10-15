@@ -11,14 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Шлюз подсистемы A к SQLite. Таблицы: slots (слоты полива) и soil_readings (показания датчиков).
- * Соединение открывается на каждую операцию, поэтому «рестарт» — это просто новый
- * SlotRepository на тот же файл: всё, что было записано, читается с диска.
- */
 public class SlotRepository {
 
-    /** Ошибка хранилища (не бизнес-ошибка). */
     public static class StorageException extends RuntimeException {
         public StorageException(String message, Throwable cause) {
             super(cause == null || cause.getMessage() == null ? message : message + ": " + cause.getMessage(), cause);
@@ -53,9 +47,6 @@ public class SlotRepository {
         }
     }
 
-    // ---------- slots ----------
-
-    /** Вставляет новый слот (id == null) или обновляет статус существующего. */
     public void save(IrrigationSlot slot) {
         try (Connection c = open()) {
             if (slot.getId() == null) {
@@ -97,7 +88,6 @@ public class SlotRepository {
         }
     }
 
-    /** Слот грядки в статусе RESERVED (цикл ещё идёт), если такой есть. CONFIRMED грядку не блокирует. */
     public Optional<IrrigationSlot> findActiveByBed(String bedId) {
         try (Connection c = open();
              PreparedStatement ps = c.prepareStatement(
@@ -135,8 +125,6 @@ public class SlotRepository {
                 IrrigationSlot.Status.valueOf(rs.getString("status")));
     }
 
-    // ---------- soil readings ----------
-
     public void saveReading(String bedId, double moisturePercent) {
         try (Connection c = open();
              PreparedStatement ps = c.prepareStatement(
@@ -150,7 +138,6 @@ public class SlotRepository {
         }
     }
 
-    /** Последнее показание влажности для грядки. */
     public Optional<Double> latestMoisture(String bedId) {
         try (Connection c = open();
              PreparedStatement ps = c.prepareStatement(
@@ -164,7 +151,6 @@ public class SlotRepository {
         }
     }
 
-    /** Полный сброс хранилища A (для CLI и тестов). */
     public void clear() {
         try (Connection c = open(); Statement s = c.createStatement()) {
             s.execute("DELETE FROM slots");

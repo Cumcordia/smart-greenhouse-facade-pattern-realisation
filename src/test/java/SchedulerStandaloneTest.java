@@ -6,10 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import greenhouse.a.*;
 
-/**
- * Подсистема A сама по себе, без фасада и без B/C.
- * Каждый тест получает свежий файл БД (@TempDir) — независимость и повторяемость по F.I.R.S.T.
- */
 class SchedulerStandaloneTest {
 
     @TempDir
@@ -125,7 +121,6 @@ class SchedulerStandaloneTest {
         sensors.recordMoisture("B-3", 20);
         long id = scheduler.reserve("B-3").getId();
 
-        // «рестарт»: новые объекты поверх того же файла
         SlotRepository reopened = new SlotRepository(dbPath);
         IrrigationScheduler restarted =
                 new IrrigationScheduler(reopened, new SoilSensorArray(reopened), new IrrigationPolicy());
@@ -133,9 +128,7 @@ class SchedulerStandaloneTest {
         IrrigationSlot loaded = reopened.findById(id).orElseThrow();
         assertEquals(IrrigationSlot.Status.RESERVED, loaded.getStatus());
         assertEquals("B-3", loaded.getBedId());
-        // бизнес-правило видит занятую грядку после рестарта
         assertThrows(IllegalStateException.class, () -> restarted.reserve("B-3"));
-        // и откат после рестарта работает
         restarted.release(id);
         assertEquals(IrrigationSlot.Status.RELEASED, reopened.findById(id).orElseThrow().getStatus());
     }

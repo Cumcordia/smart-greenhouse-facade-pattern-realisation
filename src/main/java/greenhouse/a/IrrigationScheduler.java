@@ -1,13 +1,5 @@
 package greenhouse.a;
 
-/**
- * Сервис A: резервирует слот полива, подтверждает его и освобождает (откат шага A).
- *
- * Ошибки:
- *  - IllegalArgumentException — плохой ввод (формат грядки, неизвестный слот);
- *  - IllegalStateException    — правило предметной области не позволяет действие
- *                               (нет показаний, полив не нужен, грядка уже занята, неверный переход).
- */
 public class IrrigationScheduler {
 
     private final SlotRepository repository;
@@ -46,10 +38,6 @@ public class IrrigationScheduler {
         return slot;
     }
 
-    /**
-     * Откат A. Идемпотентен: повторный вызов для уже освобождённого слота ничего не меняет —
-     * это нужно, чтобы фасад мог безопасно доводить откат после рестарта.
-     */
     public IrrigationSlot release(long slotId) {
         IrrigationSlot slot = load(slotId);
         if (slot.getStatus() == IrrigationSlot.Status.RELEASED) {

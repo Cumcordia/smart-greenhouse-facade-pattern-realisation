@@ -1,9 +1,5 @@
 package greenhouse.b;
 
-/**
- * Чистая бизнес-логика подсистемы B: какой режим вентиляции нужен
- * при заданных температуре и влажности воздуха. Ничего не хранит и ни от чего не зависит.
- */
 public class VentilationPolicy {
 
     public enum Mode { OFF, LOW, HIGH }
@@ -13,7 +9,6 @@ public class VentilationPolicy {
     public static final double LOW_TEMPERATURE = 25.0;
     public static final double LOW_HUMIDITY = 65.0;
 
-    /** Температура в °C, влажность воздуха в %. Бросает IllegalArgumentException при невозможных значениях. */
     public Mode modeFor(double temperatureC, double humidityPercent) {
         if (Double.isNaN(temperatureC) || temperatureC < -50 || temperatureC > 80) {
             throw new IllegalArgumentException("Temperature must be within -50..80 C, got " + temperatureC);
