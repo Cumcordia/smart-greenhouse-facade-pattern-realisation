@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NutrientDispenser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.c</a> &gt; <span class="el_source">NutrientDispenser.java</span></div><h1>NutrientDispenser.java</h1><pre class="source lang-java linenums">package greenhouse.c;
+
+import java.util.regex.Pattern;
+
+/**
+ * Сервис C: дозирует удобрение и откатывает дозу.
+ * Подсистема C ничего не знает про A и B: на вход приходят обычные значения
+ * (грядка, объём воды в литрах, название культуры).
+ *
+ * Ошибки:
+ *  - IllegalArgumentException — плохой ввод (грядка, объём воды, культура, неизвестная доза);
+ *  - IllegalStateException    — отказ дозатора или недопустимый переход статуса.
+ */
+public class NutrientDispenser {
+
+<span class="fc" id="L16">    private static final Pattern BED_ID = Pattern.compile(&quot;[A-Za-z]-\\d+&quot;);</span>
+
+    private final DosageRepository repository;
+    private final DosageCalculator calculator;
+    private boolean dispenserFaulty;
+
+<span class="fc" id="L22">    public NutrientDispenser(DosageRepository repository, DosageCalculator calculator) {</span>
+<span class="fc" id="L23">        this.repository = repository;</span>
+<span class="fc" id="L24">        this.calculator = calculator;</span>
+<span class="fc" id="L25">    }</span>
+
+    /** Имитация отказа дозатора — нужна для сценария «принудительный сбой C» и для тестов. */
+    public void simulateDispenserFailure(boolean faulty) {
+<span class="fc" id="L29">        this.dispenserFaulty = faulty;</span>
+<span class="fc" id="L30">    }</span>
+
+    public DosageRecord dispense(String bedId, double waterLiters, String cropName) {
+<span class="fc bfc" id="L33" title="All 4 branches covered.">        if (bedId == null || !BED_ID.matcher(bedId).matches()) {</span>
+<span class="fc" id="L34">            throw new IllegalArgumentException(&quot;Invalid bed id '&quot; + bedId + &quot;', expected format like B-3&quot;);</span>
+        }
+<span class="fc" id="L36">        DosageCalculator.Crop crop = DosageCalculator.Crop.fromName(cropName);</span>
+<span class="fc" id="L37">        double grams = calculator.gramsFor(crop, waterLiters);</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (dispenserFaulty) {</span>
+<span class="fc" id="L39">            throw new IllegalStateException(&quot;Nutrient dispenser failure&quot;);</span>
+        }
+
+<span class="fc" id="L42">        DosageRecord record = DosageRecord.plan(bedId, crop, waterLiters, grams);</span>
+<span class="fc" id="L43">        repository.save(record);      // PLANNED попадает на диск до «физической» выдачи</span>
+<span class="fc" id="L44">        record.dispense();</span>
+<span class="fc" id="L45">        repository.save(record);      // DISPENSED — после</span>
+<span class="fc" id="L46">        return record;</span>
+    }
+
+    /**
+     * Откат C: возвращает дозу (статус REVERTED). Идемпотентен для уже возвращённой дозы —
+     * фасад может безопасно доводить откат после рестарта.
+     */
+    public DosageRecord revert(long dosageId) {
+<span class="fc" id="L54">        DosageRecord record = repository.findById(dosageId)</span>
+<span class="fc" id="L55">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown dosage &quot; + dosageId));</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (record.getStatus() == DosageRecord.Status.REVERTED) {</span>
+<span class="fc" id="L57">            return record;</span>
+        }
+<span class="fc" id="L59">        record.revert();</span>
+<span class="fc" id="L60">        repository.save(record);</span>
+<span class="fc" id="L61">        return record;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

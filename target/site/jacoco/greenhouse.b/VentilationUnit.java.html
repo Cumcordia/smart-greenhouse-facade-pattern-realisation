@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VentilationUnit.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.b</a> &gt; <span class="el_source">VentilationUnit.java</span></div><h1>VentilationUnit.java</h1><pre class="source lang-java linenums">package greenhouse.b;
+
+import greenhouse.b.RunRepository.VentilationState;
+import greenhouse.b.VentilationPolicy.Mode;
+
+/**
+ * Сервис B: включает вентиляцию в нужном режиме и возвращает её в прежнее состояние (откат).
+ * Прежний режим хранится в БД, поэтому откат работает и после рестарта.
+ */
+public class VentilationUnit {
+
+    private final RunRepository repository;
+    private final VentilationPolicy policy;
+
+<span class="fc" id="L15">    public VentilationUnit(RunRepository repository, VentilationPolicy policy) {</span>
+<span class="fc" id="L16">        this.repository = repository;</span>
+<span class="fc" id="L17">        this.policy = policy;</span>
+<span class="fc" id="L18">    }</span>
+
+    /**
+     * Включает режим, который требует политика. Если вентиляция уже была переключена и ещё
+     * не возвращена, исходный режим сохраняется — повторное включение его не затирает.
+     */
+    public Mode engage(double temperatureC, double humidityPercent) {
+<span class="fc" id="L25">        Mode target = policy.modeFor(temperatureC, humidityPercent);</span>
+<span class="fc" id="L26">        VentilationState state = repository.loadVentilation();</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        Mode original = state.previous() != null ? state.previous() : state.current();</span>
+<span class="fc" id="L28">        repository.saveVentilation(new VentilationState(target, original));</span>
+<span class="fc" id="L29">        return target;</span>
+    }
+
+    /** Возвращает прежний режим. Если откатывать нечего — ничего не делает. */
+    public Mode restore() {
+<span class="fc" id="L34">        VentilationState state = repository.loadVentilation();</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (state.previous() == null) {</span>
+<span class="fc" id="L36">            return state.current();</span>
+        }
+<span class="fc" id="L38">        repository.saveVentilation(new VentilationState(state.previous(), null));</span>
+<span class="fc" id="L39">        return state.previous();</span>
+    }
+
+    /**
+     * Фиксирует текущий режим как итоговый: цикл завершён успешно, откатывать больше нечего.
+     * Без этого «прежний» режим предыдущего цикла мог бы по ошибке вернуться при откате следующего.
+     */
+    public Mode commit() {
+<span class="fc" id="L47">        VentilationState state = repository.loadVentilation();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (state.previous() != null) {</span>
+<span class="fc" id="L49">            repository.saveVentilation(new VentilationState(state.current(), null));</span>
+        }
+<span class="fc" id="L51">        return state.current();</span>
+    }
+
+    public Mode currentMode() {
+<span class="fc" id="L55">        return repository.loadVentilation().current();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

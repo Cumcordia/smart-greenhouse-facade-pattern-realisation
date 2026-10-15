@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GreenhouseFacade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.facade</a> &gt; <span class="el_source">GreenhouseFacade.java</span></div><h1>GreenhouseFacade.java</h1><pre class="source lang-java linenums">package greenhouse.facade;
+
+import greenhouse.a.IrrigationScheduler;
+import greenhouse.a.IrrigationSlot;
+import greenhouse.a.SoilSensorArray;
+import greenhouse.b.IrrigationController;
+import greenhouse.b.IrrigationRun;
+import greenhouse.b.VentilationPolicy;
+import greenhouse.b.VentilationUnit;
+import greenhouse.c.AlertService;
+import greenhouse.c.DosageCalculator;
+import greenhouse.c.DosageRecord;
+import greenhouse.c.NutrientDispenser;
+import greenhouse.facade.CycleRecord.Status;
+import greenhouse.facade.exceptions.GreenhouseException;
+import greenhouse.facade.exceptions.InvalidInputException;
+import greenhouse.facade.exceptions.IrrigationFailedException;
+import greenhouse.facade.exceptions.NutrientFailedException;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Основной фасад: один цикл ухода за грядкой как одна операция для клиента.
+ *
+ *   A: записать показание влажности, зарезервировать слот полива
+ *   B: запустить полив, включить вентиляцию
+ *   C: выдать удобрение, создать и отправить оповещение
+ *   финал: завершить полив, зафиксировать вентиляцию, подтвердить слот
+ *
+ * Ход цепочки пишется на диск (CycleRecord) после каждого шага, поэтому откат определяется
+ * по тому, что реально сохранено: сбой B → откат A; сбой C → откат B, затем A.
+ */
+public class GreenhouseFacade {
+
+    /** Ввод клиента для одного цикла. */
+<span class="nc" id="L36">    public record CycleRequest(String bedId, double moisturePercent, String crop,</span>
+                               double temperatureC, double humidityPercent) {}
+
+    private final SoilSensorArray sensors;
+    private final IrrigationScheduler scheduler;
+    private final IrrigationController irrigation;
+    private final VentilationUnit ventilation;
+    private final NutrientDispenser dispenser;
+    private final AlertService alerts;
+    private final CycleRepository cycles;
+<span class="nc" id="L46">    private final VentilationPolicy ventilationPolicy = new VentilationPolicy();</span>
+
+    public GreenhouseFacade(SoilSensorArray sensors, IrrigationScheduler scheduler,
+                            IrrigationController irrigation, VentilationUnit ventilation,
+<span class="nc" id="L50">                            NutrientDispenser dispenser, AlertService alerts, CycleRepository cycles) {</span>
+<span class="nc" id="L51">        this.sensors = sensors;</span>
+<span class="nc" id="L52">        this.scheduler = scheduler;</span>
+<span class="nc" id="L53">        this.irrigation = irrigation;</span>
+<span class="nc" id="L54">        this.ventilation = ventilation;</span>
+<span class="nc" id="L55">        this.dispenser = dispenser;</span>
+<span class="nc" id="L56">        this.alerts = alerts;</span>
+<span class="nc" id="L57">        this.cycles = cycles;</span>
+<span class="nc" id="L58">    }</span>
+
+    /**
+     * Прогоняет всю цепочку A → B → C.
+     *
+     * @throws InvalidInputException      плохой ввод или шаг A недоступен — ничего не зафиксировано
+     * @throws IrrigationFailedException  сбой B — шаг A уже откачен
+     * @throws NutrientFailedException    сбой C — шаги B и A уже откачены
+     */
+    public CycleRecord runCycle(CycleRequest request) {
+<span class="nc" id="L68">        String crop = validate(request);</span>
+<span class="nc" id="L69">        String bedId = request.bedId();</span>
+
+        // ---------- шаг A: показание + резерв слота ----------
+        IrrigationSlot slot;
+        try {
+<span class="nc" id="L74">            sensors.recordMoisture(bedId, request.moisturePercent());</span>
+<span class="nc" id="L75">            slot = scheduler.reserve(bedId);</span>
+<span class="nc" id="L76">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="nc" id="L77">            throw new InvalidInputException(e.getMessage(), e);</span>
+<span class="nc" id="L78">        }</span>
+<span class="nc" id="L79">        CycleRecord cycle = CycleRecord.begin(bedId, crop, request.temperatureC(),</span>
+<span class="nc" id="L80">                request.humidityPercent(), slot.getId());</span>
+<span class="nc" id="L81">        cycles.save(cycle);                                   // PENDING_B</span>
+
+        // ---------- шаг B: полив + вентиляция ----------
+        try {
+<span class="nc" id="L85">            IrrigationRun run = irrigation.start(bedId, slot.getLiters());</span>
+<span class="nc" id="L86">            cycle.attachRun(run.getId());</span>
+<span class="nc" id="L87">            cycles.save(cycle);                               // запуск записан до вентиляции</span>
+<span class="nc" id="L88">            ventilation.engage(request.temperatureC(), request.humidityPercent());</span>
+<span class="nc" id="L89">            cycle.advanceToPendingC();</span>
+<span class="nc" id="L90">            cycles.save(cycle);                               // PENDING_C</span>
+<span class="nc" id="L91">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L92">            compensate(cycle, &quot;Step B failed: &quot; + e.getMessage());</span>
+<span class="nc" id="L93">            throw new IrrigationFailedException(cycle.getId(),</span>
+<span class="nc" id="L94">                    &quot;Step B (irrigation/ventilation) failed: &quot; + e.getMessage()</span>
+<span class="nc" id="L95">                            + &quot; — cycle &quot; + cycle.getId() + &quot; compensated (A rolled back)&quot;, e);</span>
+<span class="nc" id="L96">        }</span>
+
+        // ---------- шаг C: удобрение + оповещение ----------
+        try {
+<span class="nc" id="L100">            DosageRecord dosage = dispenser.dispense(bedId, slot.getLiters(), crop);</span>
+<span class="nc" id="L101">            cycle.attachDosage(dosage.getId());</span>
+<span class="nc" id="L102">            cycles.save(cycle);</span>
+<span class="nc" id="L103">            AlertService.Alert alert = alerts.create(String.format(Locale.ROOT,</span>
+<span class="nc" id="L104">                    &quot;Fertilizer dispensed for %s: %.1f g (%s)&quot;, bedId, dosage.getGrams(), crop));</span>
+<span class="nc" id="L105">            cycle.attachAlert(alert.id());</span>
+<span class="nc" id="L106">            cycles.save(cycle);</span>
+<span class="nc" id="L107">            alerts.send(alert.id());</span>
+<span class="nc" id="L108">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L109">            compensate(cycle, &quot;Step C failed: &quot; + e.getMessage());</span>
+<span class="nc" id="L110">            throw new NutrientFailedException(cycle.getId(),</span>
+<span class="nc" id="L111">                    &quot;Step C (nutrients/alert) failed: &quot; + e.getMessage()</span>
+<span class="nc" id="L112">                            + &quot; — cycle &quot; + cycle.getId() + &quot; compensated (B and A rolled back)&quot;, e);</span>
+<span class="nc" id="L113">        }</span>
+
+        // ---------- финал: цепочка прошла, фиксируем результат ----------
+        try {
+<span class="nc" id="L117">            irrigation.complete(cycle.getRunId());</span>
+<span class="nc" id="L118">            ventilation.commit();</span>
+<span class="nc" id="L119">            scheduler.confirm(cycle.getSlotId());</span>
+<span class="nc" id="L120">            cycle.complete();</span>
+<span class="nc" id="L121">            cycles.save(cycle);                               // COMPLETED</span>
+<span class="nc" id="L122">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L123">            throw new GreenhouseException(&quot;Cycle &quot; + cycle.getId() + &quot;: all steps succeeded but finalization &quot;</span>
+<span class="nc" id="L124">                    + &quot;failed; the cycle stays &quot; + cycle.getStatus() + &quot; (recover or compensate it)&quot;, e);</span>
+<span class="nc" id="L125">        }</span>
+<span class="nc" id="L126">        return cycle;</span>
+    }
+
+    /**
+     * Откат цепочки вручную (по id). Идемпотентен для уже откаченного цикла; завершённый
+     * цикл откатить нельзя.
+     */
+    public CycleRecord compensate(long cycleId) {
+<span class="nc" id="L134">        CycleRecord cycle = cycles.findById(cycleId)</span>
+<span class="nc" id="L135">                .orElseThrow(() -&gt; new InvalidInputException(&quot;Unknown cycle &quot; + cycleId));</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (cycle.getStatus() == CycleRecord.Status.COMPENSATED) {</span>
+<span class="nc" id="L137">            return cycle;</span>
+        }
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (cycle.getStatus() == CycleRecord.Status.COMPLETED) {</span>
+<span class="nc" id="L140">            throw new InvalidInputException(&quot;Cycle &quot; + cycleId + &quot; is COMPLETED and cannot be compensated&quot;);</span>
+        }
+<span class="nc" id="L142">        return compensate(cycle, &quot;Manual compensation&quot;);</span>
+    }
+
+    /**
+     * Восстановление после рестарта: берёт с диска все незавершённые цепочки (PENDING_B / PENDING_C)
+     * и откатывает каждую на глубину, записанную в её CycleRecord.
+     *
+     * @return откаченные циклы (пусто, если всё было завершено)
+     */
+    public List&lt;CycleRecord&gt; recoverInterrupted() {
+<span class="nc" id="L152">        List&lt;CycleRecord&gt; inFlight = cycles.findInFlight();</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        for (CycleRecord cycle : inFlight) {</span>
+<span class="nc" id="L154">            compensate(cycle, &quot;Interrupted before completion (recovered after restart)&quot;);</span>
+<span class="nc" id="L155">        }</span>
+<span class="nc" id="L156">        return inFlight;</span>
+    }
+
+    /**
+     * Откат на глубину, которую подсказывает записанный ход цепочки, строго в обратном порядке:
+     * C (доза, оповещение) → B (полив, вентиляция) → A (слот). Все операции отката идемпотентны.
+     */
+    private CycleRecord compensate(CycleRecord cycle, String reason) {
+<span class="nc" id="L164">        ChainStep reached = cycle.farthestStep();</span>
+        try {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            if (reached.isAtLeast(ChainStep.C)) {</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                if (cycle.getDosageId() != null) {</span>
+<span class="nc" id="L168">                    dispenser.revert(cycle.getDosageId());</span>
+                }
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                if (cycle.getAlertId() != null) {</span>
+<span class="nc" id="L171">                    alerts.cancel(cycle.getAlertId());</span>
+                }
+            }
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            if (reached.isAtLeast(ChainStep.B)) {</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                if (cycle.getRunId() != null) {</span>
+<span class="nc" id="L176">                    irrigation.abort(cycle.getRunId());</span>
+                }
+<span class="nc" id="L178">                ventilation.restore();</span>
+            }
+<span class="nc" id="L180">            scheduler.release(cycle.getSlotId());</span>
+<span class="nc" id="L181">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L182">            throw new GreenhouseException(&quot;Compensation of cycle &quot; + cycle.getId() + &quot; (reached step &quot;</span>
+<span class="nc" id="L183">                    + reached + &quot;) failed; the cycle stays &quot; + cycle.getStatus()</span>
+<span class="nc" id="L184">                    + &quot; and can be retried: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L185">        }</span>
+<span class="nc" id="L186">        cycle.compensate(reason);</span>
+<span class="nc" id="L187">        cycles.save(cycle);</span>
+<span class="nc" id="L188">        return cycle;</span>
+    }
+
+    /** Проверяет то, что можно проверить до первого коммита; возвращает каноничное имя культуры. */
+    private String validate(CycleRequest request) {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L194">            throw new InvalidInputException(&quot;Request must not be null&quot;);</span>
+        }
+        try {
+<span class="nc" id="L197">            String crop = DosageCalculator.Crop.fromName(request.crop()).name();</span>
+<span class="nc" id="L198">            ventilationPolicy.modeFor(request.temperatureC(), request.humidityPercent());</span>
+<span class="nc" id="L199">            return crop;</span>
+<span class="nc" id="L200">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L201">            throw new InvalidInputException(e.getMessage(), e);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

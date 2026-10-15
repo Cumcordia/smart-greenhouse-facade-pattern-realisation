@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IrrigationRun.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.b</a> &gt; <span class="el_source">IrrigationRun.java</span></div><h1>IrrigationRun.java</h1><pre class="source lang-java linenums">package greenhouse.b;
+
+/**
+ * Сущность B: один запуск полива. Сама следит за допустимыми переходами статуса.
+ *
+ *   STARTED --&gt; COMPLETED
+ *   STARTED --&gt; ABORTED
+ *
+ * COMPLETED и ABORTED — конечные состояния.
+ */
+public class IrrigationRun {
+
+<span class="fc" id="L13">    public enum Status { STARTED, COMPLETED, ABORTED }</span>
+
+    private Long id;               // null, пока запуск не сохранён в БД
+    private final String bedId;
+    private final double liters;
+    private Status status;
+
+<span class="fc" id="L20">    private IrrigationRun(Long id, String bedId, double liters, Status status) {</span>
+<span class="fc" id="L21">        this.id = id;</span>
+<span class="fc" id="L22">        this.bedId = bedId;</span>
+<span class="fc" id="L23">        this.liters = liters;</span>
+<span class="fc" id="L24">        this.status = status;</span>
+<span class="fc" id="L25">    }</span>
+
+    /** Новый запуск всегда начинается со статуса STARTED. */
+    public static IrrigationRun start(String bedId, double liters) {
+<span class="fc bfc" id="L29" title="All 4 branches covered.">        if (bedId == null || bedId.isBlank()) {</span>
+<span class="fc" id="L30">            throw new IllegalArgumentException(&quot;bedId must not be blank&quot;);</span>
+        }
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (liters &lt;= 0) {</span>
+<span class="fc" id="L33">            throw new IllegalArgumentException(&quot;liters must be positive&quot;);</span>
+        }
+<span class="fc" id="L35">        return new IrrigationRun(null, bedId, liters, Status.STARTED);</span>
+    }
+
+    /** Восстановление из хранилища — это уже сохранённое состояние, переходы не проверяются. */
+    static IrrigationRun restore(long id, String bedId, double liters, Status status) {
+<span class="fc" id="L40">        return new IrrigationRun(id, bedId, liters, status);</span>
+    }
+
+    public void complete() {
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (status != Status.STARTED) {</span>
+<span class="fc" id="L45">            throw new IllegalStateException(&quot;Cannot complete run in status &quot; + status);</span>
+        }
+<span class="fc" id="L47">        status = Status.COMPLETED;</span>
+<span class="fc" id="L48">    }</span>
+
+    public void abort() {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (status != Status.STARTED) {</span>
+<span class="fc" id="L52">            throw new IllegalStateException(&quot;Cannot abort run in status &quot; + status);</span>
+        }
+<span class="fc" id="L54">        status = Status.ABORTED;</span>
+<span class="fc" id="L55">    }</span>
+
+    /** Активный запуск занимает грядку: поливается прямо сейчас. */
+    public boolean isActive() {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        return status == Status.STARTED;</span>
+    }
+
+    void assignId(long id) {
+<span class="fc" id="L63">        this.id = id;</span>
+<span class="fc" id="L64">    }</span>
+
+<span class="fc" id="L66">    public Long getId() { return id; }</span>
+<span class="fc" id="L67">    public String getBedId() { return bedId; }</span>
+<span class="fc" id="L68">    public double getLiters() { return liters; }</span>
+<span class="fc" id="L69">    public Status getStatus() { return status; }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L73">        return &quot;IrrigationRun{id=&quot; + id + &quot;, bed=&quot; + bedId + &quot;, liters=&quot; + liters + &quot;, status=&quot; + status + &quot;}&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

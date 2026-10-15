@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VentilationPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.b</a> &gt; <span class="el_source">VentilationPolicy.java</span></div><h1>VentilationPolicy.java</h1><pre class="source lang-java linenums">package greenhouse.b;
+
+/**
+ * Чистая бизнес-логика подсистемы B: какой режим вентиляции нужен
+ * при заданных температуре и влажности воздуха. Ничего не хранит и ни от чего не зависит.
+ */
+<span class="fc" id="L7">public class VentilationPolicy {</span>
+
+<span class="fc" id="L9">    public enum Mode { OFF, LOW, HIGH }</span>
+
+    public static final double HIGH_TEMPERATURE = 30.0;
+    public static final double HIGH_HUMIDITY = 80.0;
+    public static final double LOW_TEMPERATURE = 25.0;
+    public static final double LOW_HUMIDITY = 65.0;
+
+    /** Температура в °C, влажность воздуха в %. Бросает IllegalArgumentException при невозможных значениях. */
+    public Mode modeFor(double temperatureC, double humidityPercent) {
+<span class="pc bpc" id="L18" title="3 of 6 branches missed.">        if (Double.isNaN(temperatureC) || temperatureC &lt; -50 || temperatureC &gt; 80) {</span>
+<span class="nc" id="L19">            throw new IllegalArgumentException(&quot;Temperature must be within -50..80 C, got &quot; + temperatureC);</span>
+        }
+<span class="pc bpc" id="L21" title="2 of 6 branches missed.">        if (Double.isNaN(humidityPercent) || humidityPercent &lt; 0 || humidityPercent &gt; 100) {</span>
+<span class="fc" id="L22">            throw new IllegalArgumentException(&quot;Humidity must be within 0..100, got &quot; + humidityPercent);</span>
+        }
+<span class="pc bpc" id="L24" title="1 of 4 branches missed.">        if (temperatureC &gt;= HIGH_TEMPERATURE || humidityPercent &gt;= HIGH_HUMIDITY) {</span>
+<span class="fc" id="L25">            return Mode.HIGH;</span>
+        }
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">        if (temperatureC &gt;= LOW_TEMPERATURE || humidityPercent &gt;= LOW_HUMIDITY) {</span>
+<span class="fc" id="L28">            return Mode.LOW;</span>
+        }
+<span class="fc" id="L30">        return Mode.OFF;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

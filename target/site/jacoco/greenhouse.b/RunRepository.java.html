@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RunRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.b</a> &gt; <span class="el_source">RunRepository.java</span></div><h1>RunRepository.java</h1><pre class="source lang-java linenums">package greenhouse.b;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Шлюз подсистемы B к SQLite. Таблицы: runs (запуски полива) и ventilation (одна строка
+ * с текущим и прежним режимом вентиляции). Соединение открывается на каждую операцию,
+ * поэтому «рестарт» — это просто новый RunRepository на тот же файл.
+ */
+public class RunRepository {
+
+    /** Ошибка хранилища (не бизнес-ошибка). */
+    public static class StorageException extends RuntimeException {
+        public StorageException(String message, Throwable cause) {
+<span class="nc bnc" id="L24" title="All 4 branches missed.">            super(cause == null || cause.getMessage() == null ? message : message + &quot;: &quot; + cause.getMessage(), cause);</span>
+<span class="nc" id="L25">        }</span>
+    }
+
+    /** Состояние вентиляции: текущий режим и режим, к которому нужно вернуться (null, если откатывать нечего). */
+<span class="fc" id="L29">    public record VentilationState(VentilationPolicy.Mode current, VentilationPolicy.Mode previous) {}</span>
+
+    private final String url;
+
+<span class="fc" id="L33">    public RunRepository(String dbPath) {</span>
+<span class="fc" id="L34">        this.url = &quot;jdbc:sqlite:&quot; + dbPath;</span>
+<span class="fc" id="L35">        init();</span>
+<span class="fc" id="L36">    }</span>
+
+    private Connection open() throws SQLException {
+<span class="fc" id="L39">        return DriverManager.getConnection(url);</span>
+    }
+
+    private void init() {
+<span class="fc" id="L43">        try (Connection c = open(); Statement s = c.createStatement()) {</span>
+<span class="fc" id="L44">            s.execute(&quot;CREATE TABLE IF NOT EXISTS runs (&quot;</span>
+                    + &quot;id INTEGER PRIMARY KEY AUTOINCREMENT, &quot;
+                    + &quot;bed_id TEXT NOT NULL, &quot;
+                    + &quot;liters REAL NOT NULL, &quot;
+                    + &quot;status TEXT NOT NULL)&quot;);
+<span class="fc" id="L49">            s.execute(&quot;CREATE TABLE IF NOT EXISTS ventilation (&quot;</span>
+                    + &quot;id INTEGER PRIMARY KEY CHECK (id = 1), &quot;
+                    + &quot;current_mode TEXT NOT NULL, &quot;
+                    + &quot;previous_mode TEXT)&quot;);
+<span class="nc" id="L53">        } catch (SQLException e) {</span>
+<span class="nc" id="L54">            throw new StorageException(&quot;Cannot initialise subsystem B storage&quot;, e);</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">    }</span>
+
+    // ---------- runs ----------
+
+    /** Вставляет новый запуск (id == null) или обновляет статус существующего. */
+    public void save(IrrigationRun run) {
+<span class="fc" id="L62">        try (Connection c = open()) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (run.getId() == null) {</span>
+<span class="fc" id="L64">                try (PreparedStatement ps = c.prepareStatement(</span>
+                        &quot;INSERT INTO runs(bed_id, liters, status) VALUES (?, ?, ?)&quot;,
+                        Statement.RETURN_GENERATED_KEYS)) {
+<span class="fc" id="L67">                    ps.setString(1, run.getBedId());</span>
+<span class="fc" id="L68">                    ps.setDouble(2, run.getLiters());</span>
+<span class="fc" id="L69">                    ps.setString(3, run.getStatus().name());</span>
+<span class="fc" id="L70">                    ps.executeUpdate();</span>
+<span class="fc" id="L71">                    try (ResultSet keys = ps.getGeneratedKeys()) {</span>
+<span class="fc" id="L72">                        keys.next();</span>
+<span class="fc" id="L73">                        run.assignId(keys.getLong(1));</span>
+                    }
+                }
+            } else {
+<span class="fc" id="L77">                try (PreparedStatement ps = c.prepareStatement(</span>
+                        &quot;UPDATE runs SET status = ? WHERE id = ?&quot;)) {
+<span class="fc" id="L79">                    ps.setString(1, run.getStatus().name());</span>
+<span class="fc" id="L80">                    ps.setLong(2, run.getId());</span>
+<span class="fc" id="L81">                    ps.executeUpdate();</span>
+                }
+            }
+<span class="nc" id="L84">        } catch (SQLException e) {</span>
+<span class="nc" id="L85">            throw new StorageException(&quot;Cannot save run&quot;, e);</span>
+<span class="fc" id="L86">        }</span>
+<span class="fc" id="L87">    }</span>
+
+    public Optional&lt;IrrigationRun&gt; findById(long id) {
+<span class="fc" id="L90">        try (Connection c = open();</span>
+<span class="fc" id="L91">             PreparedStatement ps = c.prepareStatement(</span>
+                     &quot;SELECT id, bed_id, liters, status FROM runs WHERE id = ?&quot;)) {
+<span class="fc" id="L93">            ps.setLong(1, id);</span>
+<span class="fc" id="L94">            try (ResultSet rs = ps.executeQuery()) {</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                return rs.next() ? Optional.of(map(rs)) : Optional.empty();</span>
+            }
+<span class="nc" id="L97">        } catch (SQLException e) {</span>
+<span class="nc" id="L98">            throw new StorageException(&quot;Cannot read run &quot; + id, e);</span>
+        }
+    }
+
+    /** Запуск грядки в статусе STARTED, если такой есть. */
+    public Optional&lt;IrrigationRun&gt; findActiveByBed(String bedId) {
+<span class="fc" id="L104">        try (Connection c = open();</span>
+<span class="fc" id="L105">             PreparedStatement ps = c.prepareStatement(</span>
+                     &quot;SELECT id, bed_id, liters, status FROM runs &quot;
+                             + &quot;WHERE bed_id = ? AND status = 'STARTED' ORDER BY id DESC LIMIT 1&quot;)) {
+<span class="fc" id="L108">            ps.setString(1, bedId);</span>
+<span class="fc" id="L109">            try (ResultSet rs = ps.executeQuery()) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                return rs.next() ? Optional.of(map(rs)) : Optional.empty();</span>
+            }
+<span class="nc" id="L112">        } catch (SQLException e) {</span>
+<span class="nc" id="L113">            throw new StorageException(&quot;Cannot read active run for &quot; + bedId, e);</span>
+        }
+    }
+
+    public List&lt;IrrigationRun&gt; findAll() {
+<span class="fc" id="L118">        List&lt;IrrigationRun&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L119">        try (Connection c = open();</span>
+<span class="fc" id="L120">             Statement s = c.createStatement();</span>
+<span class="fc" id="L121">             ResultSet rs = s.executeQuery(&quot;SELECT id, bed_id, liters, status FROM runs ORDER BY id&quot;)) {</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            while (rs.next()) {</span>
+<span class="nc" id="L123">                result.add(map(rs));</span>
+            }
+<span class="nc" id="L125">        } catch (SQLException e) {</span>
+<span class="nc" id="L126">            throw new StorageException(&quot;Cannot list runs&quot;, e);</span>
+<span class="fc" id="L127">        }</span>
+<span class="fc" id="L128">        return result;</span>
+    }
+
+    private IrrigationRun map(ResultSet rs) throws SQLException {
+<span class="fc" id="L132">        return IrrigationRun.restore(</span>
+<span class="fc" id="L133">                rs.getLong(&quot;id&quot;),</span>
+<span class="fc" id="L134">                rs.getString(&quot;bed_id&quot;),</span>
+<span class="fc" id="L135">                rs.getDouble(&quot;liters&quot;),</span>
+<span class="fc" id="L136">                IrrigationRun.Status.valueOf(rs.getString(&quot;status&quot;)));</span>
+    }
+
+    // ---------- ventilation ----------
+
+    /** Если строки ещё нет — вентиляция выключена и откатывать нечего. */
+    public VentilationState loadVentilation() {
+<span class="fc" id="L143">        try (Connection c = open();</span>
+<span class="fc" id="L144">             Statement s = c.createStatement();</span>
+<span class="fc" id="L145">             ResultSet rs = s.executeQuery(&quot;SELECT current_mode, previous_mode FROM ventilation WHERE id = 1&quot;)) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            if (!rs.next()) {</span>
+<span class="fc" id="L147">                return new VentilationState(VentilationPolicy.Mode.OFF, null);</span>
+            }
+<span class="fc" id="L149">            String previous = rs.getString(&quot;previous_mode&quot;);</span>
+<span class="fc" id="L150">            return new VentilationState(</span>
+<span class="fc" id="L151">                    VentilationPolicy.Mode.valueOf(rs.getString(&quot;current_mode&quot;)),</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                    previous == null ? null : VentilationPolicy.Mode.valueOf(previous));</span>
+<span class="pc bpc" id="L153" title="3 of 6 branches missed.">        } catch (SQLException e) {</span>
+<span class="nc" id="L154">            throw new StorageException(&quot;Cannot read ventilation state&quot;, e);</span>
+        }
+    }
+
+    public void saveVentilation(VentilationState state) {
+<span class="fc" id="L159">        try (Connection c = open();</span>
+<span class="fc" id="L160">             PreparedStatement ps = c.prepareStatement(</span>
+                     &quot;INSERT OR REPLACE INTO ventilation(id, current_mode, previous_mode) VALUES (1, ?, ?)&quot;)) {
+<span class="fc" id="L162">            ps.setString(1, state.current().name());</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (state.previous() == null) {</span>
+<span class="fc" id="L164">                ps.setNull(2, Types.VARCHAR);</span>
+            } else {
+<span class="fc" id="L166">                ps.setString(2, state.previous().name());</span>
+            }
+<span class="fc" id="L168">            ps.executeUpdate();</span>
+<span class="nc" id="L169">        } catch (SQLException e) {</span>
+<span class="nc" id="L170">            throw new StorageException(&quot;Cannot save ventilation state&quot;, e);</span>
+<span class="fc" id="L171">        }</span>
+<span class="fc" id="L172">    }</span>
+
+    /** Полный сброс хранилища B (для CLI и тестов). */
+    public void clear() {
+<span class="fc" id="L176">        try (Connection c = open(); Statement s = c.createStatement()) {</span>
+<span class="fc" id="L177">            s.execute(&quot;DELETE FROM runs&quot;);</span>
+<span class="fc" id="L178">            s.execute(&quot;DELETE FROM ventilation&quot;);</span>
+<span class="fc" id="L179">            s.execute(&quot;DELETE FROM sqlite_sequence WHERE name = 'runs'&quot;);</span>
+<span class="nc" id="L180">        } catch (SQLException e) {</span>
+<span class="nc" id="L181">            throw new StorageException(&quot;Cannot clear subsystem B storage&quot;, e);</span>
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

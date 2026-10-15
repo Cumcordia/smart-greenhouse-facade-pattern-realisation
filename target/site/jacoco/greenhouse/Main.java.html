@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Main.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse</a> &gt; <span class="el_source">Main.java</span></div><h1>Main.java</h1><pre class="source lang-java linenums">package greenhouse;
+
+import greenhouse.a.IrrigationPolicy;
+import greenhouse.a.IrrigationScheduler;
+import greenhouse.a.IrrigationSlot;
+import greenhouse.a.SlotRepository;
+import greenhouse.a.SoilSensorArray;
+import greenhouse.b.IrrigationController;
+import greenhouse.b.IrrigationRun;
+import greenhouse.b.RunRepository;
+import greenhouse.b.VentilationPolicy;
+import greenhouse.b.VentilationUnit;
+import greenhouse.c.AlertService;
+import greenhouse.c.DosageCalculator;
+import greenhouse.c.DosageRecord;
+import greenhouse.c.DosageRepository;
+import greenhouse.c.NutrientDispenser;
+import greenhouse.facade.CycleRecord;
+import greenhouse.facade.CycleRepository;
+import greenhouse.facade.GreenhouseAdminFacade;
+import greenhouse.facade.GreenhouseFacade;
+import greenhouse.facade.GreenhouseAdminFacade.SystemState;
+import greenhouse.facade.GreenhouseFacade.CycleRequest;
+import greenhouse.facade.exceptions.GreenhouseException;
+import greenhouse.facade.exceptions.InvalidInputException;
+import greenhouse.facade.exceptions.IrrigationFailedException;
+import greenhouse.facade.exceptions.NutrientFailedException;
+
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.util.List;
+import java.util.Locale;
+import java.util.Scanner;
+
+/**
+ * Консольная демка теплицы. Запуск: {@code mvn compile exec:java}
+ * (путь к файлу БД — необязательный аргумент, по умолчанию greenhouse.db в текущей папке).
+ *
+ * Через меню можно прогнать цепочку A → B → C с реальным вводом, посмотреть всё, что лежит
+ * на диске, включить имитацию сбоя B или C, откатить цикл вручную, смоделировать обрыв
+ * посреди цепочки и сбросить хранилище.
+ */
+public class Main {
+
+    /** Ввод закрыт (Ctrl+D / конец файла) — выходим из программы. */
+    private static class InputClosed extends RuntimeException {}
+
+    private final String dbPath;
+    private final Scanner in;
+    private final PrintStream out;
+
+    // подсистемы (нужны только для симуляции обрыва цепочки)
+    private final SoilSensorArray sensors;
+    private final IrrigationScheduler scheduler;
+    private final IrrigationController irrigation;
+    private final VentilationUnit ventilation;
+    private final NutrientDispenser dispenser;
+    private final AlertService alerts;
+    private final CycleRepository cycles;
+
+    // фасады — всё остальное клиент делает только через них
+    private final GreenhouseFacade facade;
+    private final GreenhouseAdminFacade admin;
+
+    private boolean pumpFaulty;
+    private boolean dispenserFaulty;
+
+<span class="nc" id="L68">    public Main(String dbPath, InputStream input, PrintStream output) {</span>
+<span class="nc" id="L69">        this.dbPath = dbPath;</span>
+<span class="nc" id="L70">        this.in = new Scanner(input);</span>
+<span class="nc" id="L71">        this.out = output;</span>
+
+<span class="nc" id="L73">        SlotRepository slots = new SlotRepository(dbPath);</span>
+<span class="nc" id="L74">        this.sensors = new SoilSensorArray(slots);</span>
+<span class="nc" id="L75">        this.scheduler = new IrrigationScheduler(slots, sensors, new IrrigationPolicy());</span>
+
+<span class="nc" id="L77">        RunRepository runs = new RunRepository(dbPath);</span>
+<span class="nc" id="L78">        this.irrigation = new IrrigationController(runs);</span>
+<span class="nc" id="L79">        this.ventilation = new VentilationUnit(runs, new VentilationPolicy());</span>
+
+<span class="nc" id="L81">        DosageRepository dosages = new DosageRepository(dbPath);</span>
+<span class="nc" id="L82">        this.dispenser = new NutrientDispenser(dosages, new DosageCalculator());</span>
+<span class="nc" id="L83">        this.alerts = new AlertService(dosages);</span>
+
+<span class="nc" id="L85">        this.cycles = new CycleRepository(dbPath);</span>
+<span class="nc" id="L86">        this.facade = new GreenhouseFacade(sensors, scheduler, irrigation, ventilation,</span>
+                dispenser, alerts, cycles);
+<span class="nc" id="L88">        this.admin = new GreenhouseAdminFacade(facade, cycles, slots, runs, dosages, irrigation, dispenser);</span>
+<span class="nc" id="L89">    }</span>
+
+    public static void main(String[] args) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        String dbPath = args.length &gt; 0 ? args[0] : &quot;greenhouse.db&quot;;</span>
+<span class="nc" id="L93">        new Main(dbPath, System.in, System.out).run();</span>
+<span class="nc" id="L94">    }</span>
+
+    // ------------------------------------------------------------------ главный цикл
+
+    public void run() {
+<span class="nc" id="L99">        out.println(&quot;=== Smart Greenhouse ===   database file: &quot; + dbPath);</span>
+        try {
+<span class="nc" id="L101">            offerRecovery();</span>
+            while (true) {
+<span class="nc" id="L103">                printMenu();</span>
+<span class="nc" id="L104">                String choice = ask(&quot;Choose&quot;, null);</span>
+                try {
+<span class="nc bnc" id="L106" title="All 10 branches missed.">                    switch (choice) {</span>
+<span class="nc" id="L107">                        case &quot;1&quot; -&gt; runCycle();</span>
+<span class="nc" id="L108">                        case &quot;2&quot; -&gt; printState();</span>
+<span class="nc" id="L109">                        case &quot;3&quot; -&gt; togglePump();</span>
+<span class="nc" id="L110">                        case &quot;4&quot; -&gt; toggleDispenser();</span>
+<span class="nc" id="L111">                        case &quot;5&quot; -&gt; compensateManually();</span>
+<span class="nc" id="L112">                        case &quot;6&quot; -&gt; recover();</span>
+<span class="nc" id="L113">                        case &quot;7&quot; -&gt; simulateCrash();</span>
+<span class="nc" id="L114">                        case &quot;8&quot; -&gt; reset();</span>
+                        case &quot;0&quot; -&gt; {
+<span class="nc" id="L116">                            out.println(&quot;Bye.&quot;);</span>
+<span class="nc" id="L117">                            return;</span>
+                        }
+<span class="nc" id="L119">                        default -&gt; out.println(&quot;Unknown option '&quot; + choice + &quot;'.&quot;);</span>
+                    }
+<span class="nc" id="L121">                } catch (InvalidInputException e) {</span>
+<span class="nc" id="L122">                    out.println(&quot;REJECTED (nothing was committed): &quot; + e.getMessage());</span>
+<span class="nc" id="L123">                } catch (GreenhouseException e) {</span>
+<span class="nc" id="L124">                    out.println(&quot;ERROR: &quot; + e.getMessage());</span>
+<span class="nc" id="L125">                } catch (InputClosed e) {</span>
+<span class="nc" id="L126">                    throw e;</span>
+<span class="nc" id="L127">                } catch (RuntimeException e) {</span>
+<span class="nc" id="L128">                    out.println(&quot;ERROR: &quot; + e.getMessage());</span>
+<span class="nc" id="L129">                }</span>
+<span class="nc" id="L130">            }</span>
+<span class="nc" id="L131">        } catch (InputClosed e) {</span>
+<span class="nc" id="L132">            out.println();</span>
+<span class="nc" id="L133">            out.println(&quot;Input closed. Bye.&quot;);</span>
+        }
+<span class="nc" id="L135">    }</span>
+
+    private void printMenu() {
+<span class="nc" id="L138">        out.println();</span>
+<span class="nc" id="L139">        out.println(&quot;----------------------------------------------&quot;);</span>
+<span class="nc" id="L140">        out.println(&quot; 1) Run full cycle  A -&gt; B -&gt; C&quot;);</span>
+<span class="nc" id="L141">        out.println(&quot; 2) Show persisted state (read from disk)&quot;);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        out.println(&quot; 3) Toggle pump failure  [step B]       now: &quot; + (pumpFaulty ? &quot;FAULTY&quot; : &quot;ok&quot;));</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        out.println(&quot; 4) Toggle dispenser failure  [step C]  now: &quot; + (dispenserFaulty ? &quot;FAULTY&quot; : &quot;ok&quot;));</span>
+<span class="nc" id="L144">        out.println(&quot; 5) Compensate a cycle manually&quot;);</span>
+<span class="nc" id="L145">        out.println(&quot; 6) Recover interrupted cycles&quot;);</span>
+<span class="nc" id="L146">        out.println(&quot; 7) Simulate a crash in the middle of the chain&quot;);</span>
+<span class="nc" id="L147">        out.println(&quot; 8) Reset storage&quot;);</span>
+<span class="nc" id="L148">        out.println(&quot; 0) Exit&quot;);</span>
+<span class="nc" id="L149">        out.println(&quot;----------------------------------------------&quot;);</span>
+<span class="nc" id="L150">    }</span>
+
+    // ------------------------------------------------------------------ действия меню
+
+    private void runCycle() {
+<span class="nc" id="L155">        CycleRequest request = readRequest();</span>
+        try {
+<span class="nc" id="L157">            CycleRecord cycle = facade.runCycle(request);</span>
+<span class="nc" id="L158">            out.println(&quot;SUCCESS: &quot; + cycle);</span>
+<span class="nc" id="L159">        } catch (IrrigationFailedException e) {</span>
+<span class="nc" id="L160">            out.println(&quot;STEP B FAILED: &quot; + e.getMessage());</span>
+<span class="nc" id="L161">            printCycle(e.getCycleId());</span>
+<span class="nc" id="L162">        } catch (NutrientFailedException e) {</span>
+<span class="nc" id="L163">            out.println(&quot;STEP C FAILED: &quot; + e.getMessage());</span>
+<span class="nc" id="L164">            printCycle(e.getCycleId());</span>
+<span class="nc" id="L165">        }</span>
+<span class="nc" id="L166">    }</span>
+
+    private void togglePump() {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        pumpFaulty = !pumpFaulty;</span>
+<span class="nc" id="L170">        admin.simulatePumpFailure(pumpFaulty);</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        out.println(&quot;Pump is now &quot; + (pumpFaulty</span>
+<span class="nc" id="L172">                ? &quot;FAULTY: the next cycle fails at step B (only A is rolled back).&quot;</span>
+<span class="nc" id="L173">                : &quot;working.&quot;));</span>
+<span class="nc" id="L174">    }</span>
+
+    private void toggleDispenser() {
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        dispenserFaulty = !dispenserFaulty;</span>
+<span class="nc" id="L178">        admin.simulateDispenserFailure(dispenserFaulty);</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        out.println(&quot;Dispenser is now &quot; + (dispenserFaulty</span>
+<span class="nc" id="L180">                ? &quot;FAULTY: the next cycle fails at step C (B and then A are rolled back).&quot;</span>
+<span class="nc" id="L181">                : &quot;working.&quot;));</span>
+<span class="nc" id="L182">    }</span>
+
+    private void compensateManually() {
+<span class="nc" id="L185">        long id = askLong(&quot;Cycle id to compensate&quot;);</span>
+<span class="nc" id="L186">        CycleRecord cycle = admin.compensate(id);</span>
+<span class="nc" id="L187">        out.println(&quot;Compensated: &quot; + cycle);</span>
+<span class="nc" id="L188">    }</span>
+
+    private void recover() {
+<span class="nc" id="L191">        List&lt;CycleRecord&gt; recovered = facade.recoverInterrupted();</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (recovered.isEmpty()) {</span>
+<span class="nc" id="L193">            out.println(&quot;Nothing to recover: no unfinished cycles on disk.&quot;);</span>
+<span class="nc" id="L194">            return;</span>
+        }
+<span class="nc" id="L196">        out.println(&quot;Recovered &quot; + recovered.size() + &quot; interrupted cycle(s):&quot;);</span>
+<span class="nc" id="L197">        recovered.forEach(c -&gt; out.println(&quot;  &quot; + c));</span>
+<span class="nc" id="L198">    }</span>
+
+    private void reset() {
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (!confirm(&quot;Wipe ALL persisted data (slots, runs, doses, alerts, cycles)?&quot;)) {</span>
+<span class="nc" id="L202">            out.println(&quot;Cancelled.&quot;);</span>
+<span class="nc" id="L203">            return;</span>
+        }
+<span class="nc" id="L205">        admin.resetAll();</span>
+<span class="nc" id="L206">        pumpFaulty = false;</span>
+<span class="nc" id="L207">        dispenserFaulty = false;</span>
+<span class="nc" id="L208">        out.println(&quot;Storage is clean, simulated failures are switched off.&quot;);</span>
+<span class="nc" id="L209">    }</span>
+
+    /**
+     * Для демо восстановления: имитирует падение приложения посреди цепочки. Всё, что успело
+     * произойти, записано на диск, цикл остаётся незавершённым. Дальше можно нажать 6 или выйти
+     * и запустить программу заново — при старте она найдёт оборванный цикл.
+     */
+    private void simulateCrash() {
+<span class="nc" id="L217">        out.println(&quot;1) crash right after step B (slot reserved, pump running, ventilation on)&quot;);</span>
+<span class="nc" id="L218">        out.println(&quot;2) crash during step C (dose dispensed, alert created, cycle not finished)&quot;);</span>
+<span class="nc bnc" id="L219" title="All 3 branches missed.">        boolean withDosage = switch (ask(&quot;Choose&quot;, &quot;1&quot;)) {</span>
+<span class="nc" id="L220">            case &quot;1&quot; -&gt; false;</span>
+<span class="nc" id="L221">            case &quot;2&quot; -&gt; true;</span>
+<span class="nc" id="L222">            default -&gt; throw new IllegalArgumentException(&quot;Choose 1 or 2&quot;);</span>
+        };
+<span class="nc" id="L224">        CycleRequest r = readRequest();</span>
+<span class="nc" id="L225">        String crop = DosageCalculator.Crop.fromName(r.crop()).name();</span>
+
+<span class="nc" id="L227">        sensors.recordMoisture(r.bedId(), r.moisturePercent());</span>
+<span class="nc" id="L228">        IrrigationSlot slot = scheduler.reserve(r.bedId());</span>
+<span class="nc" id="L229">        CycleRecord record = CycleRecord.begin(r.bedId(), crop, r.temperatureC(), r.humidityPercent(), slot.getId());</span>
+<span class="nc" id="L230">        cycles.save(record);</span>
+
+<span class="nc" id="L232">        IrrigationRun run = irrigation.start(r.bedId(), slot.getLiters());</span>
+<span class="nc" id="L233">        record.attachRun(run.getId());</span>
+<span class="nc" id="L234">        cycles.save(record);</span>
+<span class="nc" id="L235">        ventilation.engage(r.temperatureC(), r.humidityPercent());</span>
+<span class="nc" id="L236">        record.advanceToPendingC();</span>
+<span class="nc" id="L237">        cycles.save(record);</span>
+
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (withDosage) {</span>
+<span class="nc" id="L240">            DosageRecord dosage = dispenser.dispense(r.bedId(), slot.getLiters(), crop);</span>
+<span class="nc" id="L241">            record.attachDosage(dosage.getId());</span>
+<span class="nc" id="L242">            cycles.save(record);</span>
+<span class="nc" id="L243">            record.attachAlert(alerts.create(&quot;Fertilizer dispensed for &quot; + r.bedId()).id());</span>
+<span class="nc" id="L244">            cycles.save(record);</span>
+        }
+<span class="nc" id="L246">        out.println(&quot;The application \&quot;crashed\&quot;: &quot; + record);</span>
+<span class="nc" id="L247">        out.println(&quot;Use option 6 now, or exit and start the program again to see recovery on startup.&quot;);</span>
+<span class="nc" id="L248">    }</span>
+
+    /** При старте: если на диске остались незавершённые цепочки — предложить откатить. */
+    private void offerRecovery() {
+<span class="nc" id="L252">        List&lt;CycleRecord&gt; inFlight = admin.listCycles().stream().filter(CycleRecord::isInFlight).toList();</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (inFlight.isEmpty()) {</span>
+<span class="nc" id="L254">            return;</span>
+        }
+<span class="nc" id="L256">        out.println();</span>
+<span class="nc" id="L257">        out.println(&quot;Found &quot; + inFlight.size() + &quot; unfinished cycle(s) left on disk from a previous run:&quot;);</span>
+<span class="nc" id="L258">        inFlight.forEach(c -&gt; out.println(&quot;  &quot; + c));</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        if (confirm(&quot;Roll them back now?&quot;)) {</span>
+<span class="nc" id="L260">            recover();</span>
+        } else {
+<span class="nc" id="L262">            out.println(&quot;Left as is. Use option 6 or 5 later.&quot;);</span>
+        }
+<span class="nc" id="L264">    }</span>
+
+    // ------------------------------------------------------------------ вывод состояния
+
+    private void printState() {
+<span class="nc" id="L269">        SystemState s = admin.inspect();</span>
+
+<span class="nc" id="L271">        out.println();</span>
+<span class="nc" id="L272">        out.println(&quot;--- Cycles (chain progress) ---&quot;);</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        if (s.cycles().isEmpty()) {</span>
+<span class="nc" id="L274">            out.println(&quot;  (none)&quot;);</span>
+        }
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        for (CycleRecord c : s.cycles()) {</span>
+<span class="nc" id="L277">            out.println(&quot;  #&quot; + c.getId() + &quot;  bed=&quot; + c.getBedId() + &quot;  crop=&quot; + c.getCrop()</span>
+<span class="nc" id="L278">                    + &quot;  status=&quot; + c.getStatus()</span>
+<span class="nc" id="L279">                    + &quot;  slot=&quot; + c.getSlotId() + &quot;  run=&quot; + dash(c.getRunId())</span>
+<span class="nc" id="L280">                    + &quot;  dosage=&quot; + dash(c.getDosageId()) + &quot;  alert=&quot; + dash(c.getAlertId())</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">                    + (c.getFailureReason() == null ? &quot;&quot; : &quot;  reason=\&quot;&quot; + c.getFailureReason() + &quot;\&quot;&quot;));</span>
+<span class="nc" id="L282">        }</span>
+
+<span class="nc" id="L284">        out.println(&quot;--- A: irrigation slots ---&quot;);</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        if (s.slots().isEmpty()) {</span>
+<span class="nc" id="L286">            out.println(&quot;  (none)&quot;);</span>
+        }
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        for (IrrigationSlot slot : s.slots()) {</span>
+<span class="nc" id="L289">            out.println(String.format(Locale.ROOT, &quot;  #%d  bed=%s  liters=%.1f  status=%s&quot;,</span>
+<span class="nc" id="L290">                    slot.getId(), slot.getBedId(), slot.getLiters(), slot.getStatus()));</span>
+<span class="nc" id="L291">        }</span>
+
+<span class="nc" id="L293">        out.println(&quot;--- B: irrigation runs ---&quot;);</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        if (s.runs().isEmpty()) {</span>
+<span class="nc" id="L295">            out.println(&quot;  (none)&quot;);</span>
+        }
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        for (IrrigationRun run : s.runs()) {</span>
+<span class="nc" id="L298">            out.println(String.format(Locale.ROOT, &quot;  #%d  bed=%s  liters=%.1f  status=%s&quot;,</span>
+<span class="nc" id="L299">                    run.getId(), run.getBedId(), run.getLiters(), run.getStatus()));</span>
+<span class="nc" id="L300">        }</span>
+<span class="nc" id="L301">        out.println(&quot;--- B: ventilation mode: &quot; + s.ventilationMode() + &quot; ---&quot;);</span>
+
+<span class="nc" id="L303">        out.println(&quot;--- C: dosages ---&quot;);</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">        if (s.dosages().isEmpty()) {</span>
+<span class="nc" id="L305">            out.println(&quot;  (none)&quot;);</span>
+        }
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        for (DosageRecord d : s.dosages()) {</span>
+<span class="nc" id="L308">            out.println(String.format(Locale.ROOT, &quot;  #%d  bed=%s  crop=%s  water=%.1f L  dose=%.1f g  status=%s&quot;,</span>
+<span class="nc" id="L309">                    d.getId(), d.getBedId(), d.getCrop(), d.getWaterLiters(), d.getGrams(), d.getStatus()));</span>
+<span class="nc" id="L310">        }</span>
+
+<span class="nc" id="L312">        out.println(&quot;--- C: alerts ---&quot;);</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">        if (s.alerts().isEmpty()) {</span>
+<span class="nc" id="L314">            out.println(&quot;  (none)&quot;);</span>
+        }
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        for (AlertService.Alert a : s.alerts()) {</span>
+<span class="nc" id="L317">            out.println(&quot;  #&quot; + a.id() + &quot;  status=&quot; + a.status() + &quot;  \&quot;&quot; + a.message() + &quot;\&quot;&quot;);</span>
+<span class="nc" id="L318">        }</span>
+<span class="nc" id="L319">    }</span>
+
+    private void printCycle(long cycleId) {
+<span class="nc" id="L322">        admin.listCycles().stream()</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">                .filter(c -&gt; c.getId() == cycleId)</span>
+<span class="nc" id="L324">                .findFirst()</span>
+<span class="nc" id="L325">                .ifPresent(c -&gt; out.println(&quot;  &quot; + c));</span>
+<span class="nc" id="L326">        out.println(&quot;  (option 2 shows what is now on disk)&quot;);</span>
+<span class="nc" id="L327">    }</span>
+
+    private static String dash(Long id) {
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        return id == null ? &quot;-&quot; : String.valueOf(id);</span>
+    }
+
+    // ------------------------------------------------------------------ ввод
+
+    private CycleRequest readRequest() {
+<span class="nc" id="L336">        out.println(&quot;(press Enter to accept the value in brackets; try moisture 55 to see a rejected cycle)&quot;);</span>
+<span class="nc" id="L337">        String bed = ask(&quot;Bed id, e.g. B-3&quot;, &quot;B-3&quot;);</span>
+<span class="nc" id="L338">        double moisture = askDouble(&quot;Soil moisture, % (0-100)&quot;, &quot;20&quot;);</span>
+<span class="nc" id="L339">        String crop = ask(&quot;Crop (tomato / cucumber / pepper / lettuce)&quot;, &quot;tomato&quot;);</span>
+<span class="nc" id="L340">        double temperature = askDouble(&quot;Air temperature, C&quot;, &quot;26&quot;);</span>
+<span class="nc" id="L341">        double humidity = askDouble(&quot;Air humidity, %&quot;, &quot;50&quot;);</span>
+<span class="nc" id="L342">        return new CycleRequest(bed, moisture, crop, temperature, humidity);</span>
+    }
+
+    private String ask(String label, String defaultValue) {
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        out.print(defaultValue == null ? label + &quot;: &quot; : label + &quot; [&quot; + defaultValue + &quot;]: &quot;);</span>
+<span class="nc" id="L347">        out.flush();</span>
+<span class="nc bnc" id="L348" title="All 2 branches missed.">        if (!in.hasNextLine()) {</span>
+<span class="nc" id="L349">            throw new InputClosed();</span>
+        }
+<span class="nc" id="L351">        String line = in.nextLine().trim();</span>
+<span class="nc bnc" id="L352" title="All 4 branches missed.">        return line.isEmpty() &amp;&amp; defaultValue != null ? defaultValue : line;</span>
+    }
+
+    private double askDouble(String label, String defaultValue) {
+<span class="nc" id="L356">        String text = ask(label, defaultValue);</span>
+        try {
+<span class="nc" id="L358">            return Double.parseDouble(text.replace(',', '.'));</span>
+<span class="nc" id="L359">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L360">            throw new IllegalArgumentException(&quot;'&quot; + text + &quot;' is not a number&quot;);</span>
+        }
+    }
+
+    private long askLong(String label) {
+<span class="nc" id="L365">        String text = ask(label, null);</span>
+        try {
+<span class="nc" id="L367">            return Long.parseLong(text);</span>
+<span class="nc" id="L368">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L369">            throw new IllegalArgumentException(&quot;'&quot; + text + &quot;' is not a whole number&quot;);</span>
+        }
+    }
+
+    private boolean confirm(String question) {
+<span class="nc" id="L374">        String answer = ask(question + &quot; (y/n)&quot;, &quot;n&quot;).toLowerCase(Locale.ROOT);</span>
+<span class="nc bnc" id="L375" title="All 4 branches missed.">        return answer.equals(&quot;y&quot;) || answer.equals(&quot;yes&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

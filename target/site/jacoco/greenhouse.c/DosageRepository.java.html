@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DosageRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.c</a> &gt; <span class="el_source">DosageRepository.java</span></div><h1>DosageRepository.java</h1><pre class="source lang-java linenums">package greenhouse.c;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Шлюз подсистемы C к SQLite. Таблицы: dosages (дозы удобрения) и alerts (оповещения).
+ * Соединение открывается на каждую операцию, поэтому «рестарт» — это просто
+ * новый DosageRepository на тот же файл.
+ */
+public class DosageRepository {
+
+    /** Ошибка хранилища (не бизнес-ошибка). */
+    public static class StorageException extends RuntimeException {
+        public StorageException(String message, Throwable cause) {
+<span class="nc bnc" id="L23" title="All 4 branches missed.">            super(cause == null || cause.getMessage() == null ? message : message + &quot;: &quot; + cause.getMessage(), cause);</span>
+<span class="nc" id="L24">        }</span>
+    }
+
+    private final String url;
+
+<span class="fc" id="L29">    public DosageRepository(String dbPath) {</span>
+<span class="fc" id="L30">        this.url = &quot;jdbc:sqlite:&quot; + dbPath;</span>
+<span class="fc" id="L31">        init();</span>
+<span class="fc" id="L32">    }</span>
+
+    private Connection open() throws SQLException {
+<span class="fc" id="L35">        return DriverManager.getConnection(url);</span>
+    }
+
+    private void init() {
+<span class="fc" id="L39">        try (Connection c = open(); Statement s = c.createStatement()) {</span>
+<span class="fc" id="L40">            s.execute(&quot;CREATE TABLE IF NOT EXISTS dosages (&quot;</span>
+                    + &quot;id INTEGER PRIMARY KEY AUTOINCREMENT, &quot;
+                    + &quot;bed_id TEXT NOT NULL, &quot;
+                    + &quot;crop TEXT NOT NULL, &quot;
+                    + &quot;water_liters REAL NOT NULL, &quot;
+                    + &quot;grams REAL NOT NULL, &quot;
+                    + &quot;status TEXT NOT NULL)&quot;);
+<span class="fc" id="L47">            s.execute(&quot;CREATE TABLE IF NOT EXISTS alerts (&quot;</span>
+                    + &quot;id INTEGER PRIMARY KEY AUTOINCREMENT, &quot;
+                    + &quot;message TEXT NOT NULL, &quot;
+                    + &quot;status TEXT NOT NULL)&quot;);
+<span class="nc" id="L51">        } catch (SQLException e) {</span>
+<span class="nc" id="L52">            throw new StorageException(&quot;Cannot initialise subsystem C storage&quot;, e);</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">    }</span>
+
+    // ---------- dosages ----------
+
+    /** Вставляет новую дозу (id == null) или обновляет статус существующей. */
+    public void save(DosageRecord record) {
+<span class="fc" id="L60">        try (Connection c = open()) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (record.getId() == null) {</span>
+<span class="fc" id="L62">                try (PreparedStatement ps = c.prepareStatement(</span>
+                        &quot;INSERT INTO dosages(bed_id, crop, water_liters, grams, status) VALUES (?, ?, ?, ?, ?)&quot;,
+                        Statement.RETURN_GENERATED_KEYS)) {
+<span class="fc" id="L65">                    ps.setString(1, record.getBedId());</span>
+<span class="fc" id="L66">                    ps.setString(2, record.getCrop().name());</span>
+<span class="fc" id="L67">                    ps.setDouble(3, record.getWaterLiters());</span>
+<span class="fc" id="L68">                    ps.setDouble(4, record.getGrams());</span>
+<span class="fc" id="L69">                    ps.setString(5, record.getStatus().name());</span>
+<span class="fc" id="L70">                    ps.executeUpdate();</span>
+<span class="fc" id="L71">                    try (ResultSet keys = ps.getGeneratedKeys()) {</span>
+<span class="fc" id="L72">                        keys.next();</span>
+<span class="fc" id="L73">                        record.assignId(keys.getLong(1));</span>
+                    }
+                }
+            } else {
+<span class="fc" id="L77">                try (PreparedStatement ps = c.prepareStatement(</span>
+                        &quot;UPDATE dosages SET status = ? WHERE id = ?&quot;)) {
+<span class="fc" id="L79">                    ps.setString(1, record.getStatus().name());</span>
+<span class="fc" id="L80">                    ps.setLong(2, record.getId());</span>
+<span class="fc" id="L81">                    ps.executeUpdate();</span>
+                }
+            }
+<span class="nc" id="L84">        } catch (SQLException e) {</span>
+<span class="nc" id="L85">            throw new StorageException(&quot;Cannot save dosage&quot;, e);</span>
+<span class="fc" id="L86">        }</span>
+<span class="fc" id="L87">    }</span>
+
+    public Optional&lt;DosageRecord&gt; findById(long id) {
+<span class="fc" id="L90">        try (Connection c = open();</span>
+<span class="fc" id="L91">             PreparedStatement ps = c.prepareStatement(</span>
+                     &quot;SELECT id, bed_id, crop, water_liters, grams, status FROM dosages WHERE id = ?&quot;)) {
+<span class="fc" id="L93">            ps.setLong(1, id);</span>
+<span class="fc" id="L94">            try (ResultSet rs = ps.executeQuery()) {</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                return rs.next() ? Optional.of(mapDosage(rs)) : Optional.empty();</span>
+            }
+<span class="nc" id="L97">        } catch (SQLException e) {</span>
+<span class="nc" id="L98">            throw new StorageException(&quot;Cannot read dosage &quot; + id, e);</span>
+        }
+    }
+
+    public List&lt;DosageRecord&gt; findAll() {
+<span class="fc" id="L103">        List&lt;DosageRecord&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L104">        try (Connection c = open();</span>
+<span class="fc" id="L105">             Statement s = c.createStatement();</span>
+<span class="fc" id="L106">             ResultSet rs = s.executeQuery(</span>
+                     &quot;SELECT id, bed_id, crop, water_liters, grams, status FROM dosages ORDER BY id&quot;)) {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            while (rs.next()) {</span>
+<span class="nc" id="L109">                result.add(mapDosage(rs));</span>
+            }
+<span class="nc" id="L111">        } catch (SQLException e) {</span>
+<span class="nc" id="L112">            throw new StorageException(&quot;Cannot list dosages&quot;, e);</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc" id="L114">        return result;</span>
+    }
+
+    private DosageRecord mapDosage(ResultSet rs) throws SQLException {
+<span class="fc" id="L118">        return DosageRecord.restore(</span>
+<span class="fc" id="L119">                rs.getLong(&quot;id&quot;),</span>
+<span class="fc" id="L120">                rs.getString(&quot;bed_id&quot;),</span>
+<span class="fc" id="L121">                DosageCalculator.Crop.valueOf(rs.getString(&quot;crop&quot;)),</span>
+<span class="fc" id="L122">                rs.getDouble(&quot;water_liters&quot;),</span>
+<span class="fc" id="L123">                rs.getDouble(&quot;grams&quot;),</span>
+<span class="fc" id="L124">                DosageRecord.Status.valueOf(rs.getString(&quot;status&quot;)));</span>
+    }
+
+    // ---------- alerts ----------
+
+    /** Вставляет оповещение и возвращает его id. */
+    public long insertAlert(String message, AlertService.Status status) {
+<span class="fc" id="L131">        try (Connection c = open();</span>
+<span class="fc" id="L132">             PreparedStatement ps = c.prepareStatement(</span>
+                     &quot;INSERT INTO alerts(message, status) VALUES (?, ?)&quot;, Statement.RETURN_GENERATED_KEYS)) {
+<span class="fc" id="L134">            ps.setString(1, message);</span>
+<span class="fc" id="L135">            ps.setString(2, status.name());</span>
+<span class="fc" id="L136">            ps.executeUpdate();</span>
+<span class="fc" id="L137">            try (ResultSet keys = ps.getGeneratedKeys()) {</span>
+<span class="fc" id="L138">                keys.next();</span>
+<span class="fc" id="L139">                return keys.getLong(1);</span>
+            }
+<span class="nc" id="L141">        } catch (SQLException e) {</span>
+<span class="nc" id="L142">            throw new StorageException(&quot;Cannot save alert&quot;, e);</span>
+        }
+    }
+
+    public void updateAlertStatus(long id, AlertService.Status status) {
+<span class="fc" id="L147">        try (Connection c = open();</span>
+<span class="fc" id="L148">             PreparedStatement ps = c.prepareStatement(&quot;UPDATE alerts SET status = ? WHERE id = ?&quot;)) {</span>
+<span class="fc" id="L149">            ps.setString(1, status.name());</span>
+<span class="fc" id="L150">            ps.setLong(2, id);</span>
+<span class="fc" id="L151">            ps.executeUpdate();</span>
+<span class="nc" id="L152">        } catch (SQLException e) {</span>
+<span class="nc" id="L153">            throw new StorageException(&quot;Cannot update alert &quot; + id, e);</span>
+<span class="fc" id="L154">        }</span>
+<span class="fc" id="L155">    }</span>
+
+    public Optional&lt;AlertService.Alert&gt; findAlert(long id) {
+<span class="fc" id="L158">        try (Connection c = open();</span>
+<span class="fc" id="L159">             PreparedStatement ps = c.prepareStatement(&quot;SELECT id, message, status FROM alerts WHERE id = ?&quot;)) {</span>
+<span class="fc" id="L160">            ps.setLong(1, id);</span>
+<span class="fc" id="L161">            try (ResultSet rs = ps.executeQuery()) {</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                return rs.next() ? Optional.of(mapAlert(rs)) : Optional.empty();</span>
+            }
+<span class="nc" id="L164">        } catch (SQLException e) {</span>
+<span class="nc" id="L165">            throw new StorageException(&quot;Cannot read alert &quot; + id, e);</span>
+        }
+    }
+
+    public List&lt;AlertService.Alert&gt; findAllAlerts() {
+<span class="fc" id="L170">        List&lt;AlertService.Alert&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L171">        try (Connection c = open();</span>
+<span class="fc" id="L172">             Statement s = c.createStatement();</span>
+<span class="fc" id="L173">             ResultSet rs = s.executeQuery(&quot;SELECT id, message, status FROM alerts ORDER BY id&quot;)) {</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            while (rs.next()) {</span>
+<span class="fc" id="L175">                result.add(mapAlert(rs));</span>
+            }
+<span class="nc" id="L177">        } catch (SQLException e) {</span>
+<span class="nc" id="L178">            throw new StorageException(&quot;Cannot list alerts&quot;, e);</span>
+<span class="fc" id="L179">        }</span>
+<span class="fc" id="L180">        return result;</span>
+    }
+
+    private AlertService.Alert mapAlert(ResultSet rs) throws SQLException {
+<span class="fc" id="L184">        return new AlertService.Alert(</span>
+<span class="fc" id="L185">                rs.getLong(&quot;id&quot;),</span>
+<span class="fc" id="L186">                rs.getString(&quot;message&quot;),</span>
+<span class="fc" id="L187">                AlertService.Status.valueOf(rs.getString(&quot;status&quot;)));</span>
+    }
+
+    /** Полный сброс хранилища C (для CLI и тестов). */
+    public void clear() {
+<span class="fc" id="L192">        try (Connection c = open(); Statement s = c.createStatement()) {</span>
+<span class="fc" id="L193">            s.execute(&quot;DELETE FROM dosages&quot;);</span>
+<span class="fc" id="L194">            s.execute(&quot;DELETE FROM alerts&quot;);</span>
+<span class="fc" id="L195">            s.execute(&quot;DELETE FROM sqlite_sequence WHERE name IN ('dosages', 'alerts')&quot;);</span>
+<span class="nc" id="L196">        } catch (SQLException e) {</span>
+<span class="nc" id="L197">            throw new StorageException(&quot;Cannot clear subsystem C storage&quot;, e);</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc" id="L199">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IrrigationScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.a</a> &gt; <span class="el_source">IrrigationScheduler.java</span></div><h1>IrrigationScheduler.java</h1><pre class="source lang-java linenums">package greenhouse.a;
+
+/**
+ * Сервис A: резервирует слот полива, подтверждает его и освобождает (откат шага A).
+ *
+ * Ошибки:
+ *  - IllegalArgumentException — плохой ввод (формат грядки, неизвестный слот);
+ *  - IllegalStateException    — правило предметной области не позволяет действие
+ *                               (нет показаний, полив не нужен, грядка уже занята, неверный переход).
+ */
+public class IrrigationScheduler {
+
+    private final SlotRepository repository;
+    private final SoilSensorArray sensors;
+    private final IrrigationPolicy policy;
+
+<span class="fc" id="L17">    public IrrigationScheduler(SlotRepository repository, SoilSensorArray sensors, IrrigationPolicy policy) {</span>
+<span class="fc" id="L18">        this.repository = repository;</span>
+<span class="fc" id="L19">        this.sensors = sensors;</span>
+<span class="fc" id="L20">        this.policy = policy;</span>
+<span class="fc" id="L21">    }</span>
+
+    public IrrigationSlot reserve(String bedId) {
+<span class="fc" id="L24">        SoilSensorArray.requireValidBedId(bedId);</span>
+
+<span class="fc" id="L26">        double moisture = sensors.latestMoisture(bedId)</span>
+<span class="fc" id="L27">                .orElseThrow(() -&gt; new IllegalStateException(&quot;No soil readings for bed &quot; + bedId));</span>
+
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        if (!policy.needsIrrigation(moisture)) {</span>
+<span class="fc" id="L30">            throw new IllegalStateException(&quot;Bed &quot; + bedId + &quot; does not need irrigation (moisture &quot;</span>
+                    + moisture + &quot;%)&quot;);
+        }
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (repository.findActiveByBed(bedId).isPresent()) {</span>
+<span class="fc" id="L34">            throw new IllegalStateException(&quot;Bed &quot; + bedId + &quot; already has a reserved irrigation slot&quot;);</span>
+        }
+
+<span class="fc" id="L37">        IrrigationSlot slot = IrrigationSlot.reserve(bedId, policy.litersFor(moisture));</span>
+<span class="fc" id="L38">        repository.save(slot);</span>
+<span class="fc" id="L39">        return slot;</span>
+    }
+
+    public IrrigationSlot confirm(long slotId) {
+<span class="fc" id="L43">        IrrigationSlot slot = load(slotId);</span>
+<span class="fc" id="L44">        slot.confirm();</span>
+<span class="fc" id="L45">        repository.save(slot);</span>
+<span class="fc" id="L46">        return slot;</span>
+    }
+
+    /**
+     * Откат A. Идемпотентен: повторный вызов для уже освобождённого слота ничего не меняет —
+     * это нужно, чтобы фасад мог безопасно доводить откат после рестарта.
+     */
+    public IrrigationSlot release(long slotId) {
+<span class="fc" id="L54">        IrrigationSlot slot = load(slotId);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (slot.getStatus() == IrrigationSlot.Status.RELEASED) {</span>
+<span class="fc" id="L56">            return slot;</span>
+        }
+<span class="fc" id="L58">        slot.release();</span>
+<span class="fc" id="L59">        repository.save(slot);</span>
+<span class="fc" id="L60">        return slot;</span>
+    }
+
+    private IrrigationSlot load(long slotId) {
+<span class="fc" id="L64">        return repository.findById(slotId)</span>
+<span class="fc" id="L65">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown slot &quot; + slotId));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

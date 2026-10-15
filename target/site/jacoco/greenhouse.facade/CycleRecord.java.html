@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CycleRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.facade</a> &gt; <span class="el_source">CycleRecord.java</span></div><h1>CycleRecord.java</h1><pre class="source lang-java linenums">package greenhouse.facade;
+
+/**
+ * Запись о ходе одной цепочки A → B → C. Хранится на диске, поэтому после рестарта фасад
+ * по ней (а не по памяти) понимает, что уже сделано и что нужно откатить.
+ *
+ *   PENDING_B --&gt; PENDING_C --&gt; COMPLETED
+ *   PENDING_B --------------&gt; COMPENSATED
+ *   PENDING_C --------------&gt; COMPENSATED
+ *
+ * COMPLETED и COMPENSATED — конечные состояния. Идентификаторы объектов подсистем
+ * (слот A, запуск B, доза и оповещение C) записываются сразу, как только они появились.
+ */
+public class CycleRecord {
+
+<span class="nc" id="L16">    public enum Status { PENDING_B, PENDING_C, COMPLETED, COMPENSATED }</span>
+
+    private Long id;               // null, пока запись не сохранена
+    private final String bedId;
+    private final String crop;
+    private final double temperatureC;
+    private final double humidityPercent;
+    private Status status;
+    private final long slotId;
+    private Long runId;
+    private Long dosageId;
+    private Long alertId;
+    private String failureReason;
+
+    private CycleRecord(Long id, String bedId, String crop, double temperatureC, double humidityPercent,
+                        Status status, long slotId, Long runId, Long dosageId, Long alertId,
+<span class="nc" id="L32">                        String failureReason) {</span>
+<span class="nc" id="L33">        this.id = id;</span>
+<span class="nc" id="L34">        this.bedId = bedId;</span>
+<span class="nc" id="L35">        this.crop = crop;</span>
+<span class="nc" id="L36">        this.temperatureC = temperatureC;</span>
+<span class="nc" id="L37">        this.humidityPercent = humidityPercent;</span>
+<span class="nc" id="L38">        this.status = status;</span>
+<span class="nc" id="L39">        this.slotId = slotId;</span>
+<span class="nc" id="L40">        this.runId = runId;</span>
+<span class="nc" id="L41">        this.dosageId = dosageId;</span>
+<span class="nc" id="L42">        this.alertId = alertId;</span>
+<span class="nc" id="L43">        this.failureReason = failureReason;</span>
+<span class="nc" id="L44">    }</span>
+
+    /** Шаг A выполнен (слот зарезервирован) — цепочка ждёт шага B. */
+    public static CycleRecord begin(String bedId, String crop, double temperatureC,
+                                    double humidityPercent, long slotId) {
+<span class="nc bnc" id="L49" title="All 4 branches missed.">        if (bedId == null || bedId.isBlank()) {</span>
+<span class="nc" id="L50">            throw new IllegalArgumentException(&quot;bedId must not be blank&quot;);</span>
+        }
+<span class="nc bnc" id="L52" title="All 4 branches missed.">        if (crop == null || crop.isBlank()) {</span>
+<span class="nc" id="L53">            throw new IllegalArgumentException(&quot;crop must not be blank&quot;);</span>
+        }
+<span class="nc" id="L55">        return new CycleRecord(null, bedId, crop, temperatureC, humidityPercent,</span>
+                Status.PENDING_B, slotId, null, null, null, null);
+    }
+
+    /** Восстановление из хранилища — это уже сохранённое состояние, переходы не проверяются. */
+    static CycleRecord restore(long id, String bedId, String crop, double temperatureC,
+                               double humidityPercent, Status status, long slotId, Long runId,
+                               Long dosageId, Long alertId, String failureReason) {
+<span class="nc" id="L63">        return new CycleRecord(id, bedId, crop, temperatureC, humidityPercent, status, slotId,</span>
+                runId, dosageId, alertId, failureReason);
+    }
+
+    /** Запуск полива B создан (шаг B ещё не закончен). */
+    public void attachRun(long runId) {
+<span class="nc" id="L69">        requireStatus(Status.PENDING_B, &quot;attach a run&quot;);</span>
+<span class="nc" id="L70">        this.runId = runId;</span>
+<span class="nc" id="L71">    }</span>
+
+    /** Шаг B полностью выполнен — цепочка ждёт шага C. */
+    public void advanceToPendingC() {
+<span class="nc" id="L75">        requireStatus(Status.PENDING_B, &quot;advance to PENDING_C&quot;);</span>
+<span class="nc" id="L76">        status = Status.PENDING_C;</span>
+<span class="nc" id="L77">    }</span>
+
+    public void attachDosage(long dosageId) {
+<span class="nc" id="L80">        requireStatus(Status.PENDING_C, &quot;attach a dosage&quot;);</span>
+<span class="nc" id="L81">        this.dosageId = dosageId;</span>
+<span class="nc" id="L82">    }</span>
+
+    public void attachAlert(long alertId) {
+<span class="nc" id="L85">        requireStatus(Status.PENDING_C, &quot;attach an alert&quot;);</span>
+<span class="nc" id="L86">        this.alertId = alertId;</span>
+<span class="nc" id="L87">    }</span>
+
+    public void complete() {
+<span class="nc" id="L90">        requireStatus(Status.PENDING_C, &quot;complete&quot;);</span>
+<span class="nc" id="L91">        status = Status.COMPLETED;</span>
+<span class="nc" id="L92">    }</span>
+
+    public void compensate(String reason) {
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (!isInFlight()) {</span>
+<span class="nc" id="L96">            throw new IllegalStateException(&quot;Cannot compensate cycle in status &quot; + status);</span>
+        }
+<span class="nc" id="L98">        status = Status.COMPENSATED;</span>
+<span class="nc" id="L99">        failureReason = reason;</span>
+<span class="nc" id="L100">    }</span>
+
+    /**
+     * Самый дальний шаг, до которого цепочка реально дошла, — считается по тому, что записано,
+     * а не по памяти: есть доза или оповещение → C; есть запуск полива или статус PENDING_C → B;
+     * иначе только A.
+     */
+    public ChainStep farthestStep() {
+<span class="nc bnc" id="L108" title="All 4 branches missed.">        if (dosageId != null || alertId != null) {</span>
+<span class="nc" id="L109">            return ChainStep.C;</span>
+        }
+<span class="nc bnc" id="L111" title="All 4 branches missed.">        if (runId != null || status == Status.PENDING_C) {</span>
+<span class="nc" id="L112">            return ChainStep.B;</span>
+        }
+<span class="nc" id="L114">        return ChainStep.A;</span>
+    }
+
+    /** Цепочка ещё не закончена: её либо надо откатить, либо она оборвалась на рестарте. */
+    public boolean isInFlight() {
+<span class="nc bnc" id="L119" title="All 4 branches missed.">        return status == Status.PENDING_B || status == Status.PENDING_C;</span>
+    }
+
+    private void requireStatus(Status expected, String action) {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (status != expected) {</span>
+<span class="nc" id="L124">            throw new IllegalStateException(&quot;Cannot &quot; + action + &quot; while cycle is &quot; + status);</span>
+        }
+<span class="nc" id="L126">    }</span>
+
+    void assignId(long id) {
+<span class="nc" id="L129">        this.id = id;</span>
+<span class="nc" id="L130">    }</span>
+
+<span class="nc" id="L132">    public Long getId() { return id; }</span>
+<span class="nc" id="L133">    public String getBedId() { return bedId; }</span>
+<span class="nc" id="L134">    public String getCrop() { return crop; }</span>
+<span class="nc" id="L135">    public double getTemperatureC() { return temperatureC; }</span>
+<span class="nc" id="L136">    public double getHumidityPercent() { return humidityPercent; }</span>
+<span class="nc" id="L137">    public Status getStatus() { return status; }</span>
+<span class="nc" id="L138">    public long getSlotId() { return slotId; }</span>
+<span class="nc" id="L139">    public Long getRunId() { return runId; }</span>
+<span class="nc" id="L140">    public Long getDosageId() { return dosageId; }</span>
+<span class="nc" id="L141">    public Long getAlertId() { return alertId; }</span>
+<span class="nc" id="L142">    public String getFailureReason() { return failureReason; }</span>
+
+    @Override
+    public String toString() {
+<span class="nc" id="L146">        return &quot;CycleRecord{id=&quot; + id + &quot;, bed=&quot; + bedId + &quot;, crop=&quot; + crop + &quot;, status=&quot; + status</span>
+                + &quot;, slot=&quot; + slotId + &quot;, run=&quot; + runId + &quot;, dosage=&quot; + dosageId + &quot;, alert=&quot; + alertId
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                + (failureReason == null ? &quot;&quot; : &quot;, reason=&quot; + failureReason) + &quot;}&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

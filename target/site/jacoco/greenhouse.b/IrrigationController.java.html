@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IrrigationController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.b</a> &gt; <span class="el_source">IrrigationController.java</span></div><h1>IrrigationController.java</h1><pre class="source lang-java linenums">package greenhouse.b;
+
+import java.util.regex.Pattern;
+
+/**
+ * Сервис B: запускает и останавливает полив, а также откатывает запуск (откат B).
+ * Подсистема B ничего не знает про A: на вход приходят обычные значения (грядка, литры).
+ *
+ * Ошибки:
+ *  - IllegalArgumentException — плохой ввод (формат грядки, литры, неизвестный запуск);
+ *  - IllegalStateException    — правило не позволяет действие (грядка уже поливается,
+ *                               отказ насоса, недопустимый переход статуса).
+ */
+public class IrrigationController {
+
+<span class="fc" id="L16">    private static final Pattern BED_ID = Pattern.compile(&quot;[A-Za-z]-\\d+&quot;);</span>
+
+    private final RunRepository repository;
+    private boolean pumpFaulty;
+
+<span class="fc" id="L21">    public IrrigationController(RunRepository repository) {</span>
+<span class="fc" id="L22">        this.repository = repository;</span>
+<span class="fc" id="L23">    }</span>
+
+    /** Имитация отказа насоса — нужна для сценария «принудительный сбой B» и для тестов. */
+    public void simulatePumpFailure(boolean faulty) {
+<span class="fc" id="L27">        this.pumpFaulty = faulty;</span>
+<span class="fc" id="L28">    }</span>
+
+    public IrrigationRun start(String bedId, double liters) {
+<span class="fc bfc" id="L31" title="All 4 branches covered.">        if (bedId == null || !BED_ID.matcher(bedId).matches()) {</span>
+<span class="fc" id="L32">            throw new IllegalArgumentException(&quot;Invalid bed id '&quot; + bedId + &quot;', expected format like B-3&quot;);</span>
+        }
+<span class="fc bfc" id="L34" title="All 4 branches covered.">        if (Double.isNaN(liters) || liters &lt;= 0) {</span>
+<span class="fc" id="L35">            throw new IllegalArgumentException(&quot;Liters must be positive, got &quot; + liters);</span>
+        }
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (pumpFaulty) {</span>
+<span class="fc" id="L38">            throw new IllegalStateException(&quot;Irrigation pump failure&quot;);</span>
+        }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (repository.findActiveByBed(bedId).isPresent()) {</span>
+<span class="fc" id="L41">            throw new IllegalStateException(&quot;Bed &quot; + bedId + &quot; is already being irrigated&quot;);</span>
+        }
+
+<span class="fc" id="L44">        IrrigationRun run = IrrigationRun.start(bedId, liters);</span>
+<span class="fc" id="L45">        repository.save(run);</span>
+<span class="fc" id="L46">        return run;</span>
+    }
+
+    /** Полив успешно завершён (вызывается, когда вся цепочка прошла). */
+    public IrrigationRun complete(long runId) {
+<span class="fc" id="L51">        IrrigationRun run = load(runId);</span>
+<span class="fc" id="L52">        run.complete();</span>
+<span class="fc" id="L53">        repository.save(run);</span>
+<span class="fc" id="L54">        return run;</span>
+    }
+
+    /**
+     * Откат B: останавливает полив. Идемпотентен для уже остановленного запуска —
+     * фасад может безопасно доводить откат после рестарта. Завершённый (COMPLETED)
+     * запуск остановить нельзя: это IllegalStateException.
+     */
+    public IrrigationRun abort(long runId) {
+<span class="fc" id="L63">        IrrigationRun run = load(runId);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (run.getStatus() == IrrigationRun.Status.ABORTED) {</span>
+<span class="fc" id="L65">            return run;</span>
+        }
+<span class="fc" id="L67">        run.abort();</span>
+<span class="fc" id="L68">        repository.save(run);</span>
+<span class="fc" id="L69">        return run;</span>
+    }
+
+    private IrrigationRun load(long runId) {
+<span class="fc" id="L73">        return repository.findById(runId)</span>
+<span class="fc" id="L74">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown run &quot; + runId));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

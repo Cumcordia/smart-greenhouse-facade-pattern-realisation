@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IrrigationSlot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.a</a> &gt; <span class="el_source">IrrigationSlot.java</span></div><h1>IrrigationSlot.java</h1><pre class="source lang-java linenums">package greenhouse.a;
+
+/**
+ * Сущность A: слот полива для грядки. Сама следит за допустимыми переходами статуса,
+ * независимо от того, кто её вызывает (фасад, тест или main).
+ *
+ *   RESERVED --&gt; CONFIRMED --&gt; RELEASED
+ *   RESERVED ----------------&gt; RELEASED
+ */
+public class IrrigationSlot {
+
+<span class="fc" id="L12">    public enum Status { RESERVED, CONFIRMED, RELEASED }</span>
+
+    private Long id;               // null, пока слот не сохранён в БД
+    private final String bedId;
+    private final double liters;
+    private Status status;
+
+<span class="fc" id="L19">    private IrrigationSlot(Long id, String bedId, double liters, Status status) {</span>
+<span class="fc" id="L20">        this.id = id;</span>
+<span class="fc" id="L21">        this.bedId = bedId;</span>
+<span class="fc" id="L22">        this.liters = liters;</span>
+<span class="fc" id="L23">        this.status = status;</span>
+<span class="fc" id="L24">    }</span>
+
+    /** Новый слот всегда начинает со статуса RESERVED. */
+    public static IrrigationSlot reserve(String bedId, double liters) {
+<span class="fc bfc" id="L28" title="All 4 branches covered.">        if (bedId == null || bedId.isBlank()) {</span>
+<span class="fc" id="L29">            throw new IllegalArgumentException(&quot;bedId must not be blank&quot;);</span>
+        }
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (liters &lt;= 0) {</span>
+<span class="fc" id="L32">            throw new IllegalArgumentException(&quot;liters must be positive&quot;);</span>
+        }
+<span class="fc" id="L34">        return new IrrigationSlot(null, bedId, liters, Status.RESERVED);</span>
+    }
+
+    /** Восстановление из хранилища — переходы не проверяются, это уже сохранённое состояние. */
+    static IrrigationSlot restore(long id, String bedId, double liters, Status status) {
+<span class="fc" id="L39">        return new IrrigationSlot(id, bedId, liters, status);</span>
+    }
+
+    public void confirm() {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (status != Status.RESERVED) {</span>
+<span class="fc" id="L44">            throw new IllegalStateException(&quot;Cannot confirm slot in status &quot; + status);</span>
+        }
+<span class="fc" id="L46">        status = Status.CONFIRMED;</span>
+<span class="fc" id="L47">    }</span>
+
+    public void release() {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (status == Status.RELEASED) {</span>
+<span class="fc" id="L51">            throw new IllegalStateException(&quot;Slot is already RELEASED&quot;);</span>
+        }
+<span class="fc" id="L53">        status = Status.RELEASED;</span>
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Активный слот занимает грядку, пока цикл идёт (RESERVED). Подтверждённый слот — это уже
+     * завершённый успешный цикл, он грядку не блокирует и следующий цикл возможен.
+     */
+    public boolean isActive() {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        return status == Status.RESERVED;</span>
+    }
+
+    void assignId(long id) {
+<span class="fc" id="L65">        this.id = id;</span>
+<span class="fc" id="L66">    }</span>
+
+<span class="fc" id="L68">    public Long getId() { return id; }</span>
+<span class="fc" id="L69">    public String getBedId() { return bedId; }</span>
+<span class="fc" id="L70">    public double getLiters() { return liters; }</span>
+<span class="fc" id="L71">    public Status getStatus() { return status; }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L75">        return &quot;IrrigationSlot{id=&quot; + id + &quot;, bed=&quot; + bedId + &quot;, liters=&quot; + liters + &quot;, status=&quot; + status + &quot;}&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

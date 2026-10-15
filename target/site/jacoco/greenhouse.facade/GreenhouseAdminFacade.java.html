@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GreenhouseAdminFacade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.facade</a> &gt; <span class="el_source">GreenhouseAdminFacade.java</span></div><h1>GreenhouseAdminFacade.java</h1><pre class="source lang-java linenums">package greenhouse.facade;
+
+import greenhouse.a.IrrigationSlot;
+import greenhouse.a.SlotRepository;
+import greenhouse.b.IrrigationController;
+import greenhouse.b.IrrigationRun;
+import greenhouse.b.RunRepository;
+import greenhouse.b.VentilationPolicy;
+import greenhouse.c.AlertService;
+import greenhouse.c.DosageRecord;
+import greenhouse.c.DosageRepository;
+import greenhouse.c.NutrientDispenser;
+
+import java.util.List;
+
+/**
+ * Узкий фасад для администратора: посмотреть всё сохранённое, откатить цикл вручную,
+ * сбросить хранилище и включить/выключить имитацию сбоев B и C для демо.
+ * Откат делегируется основному фасаду — это тот же проверенный код, а не вторая копия.
+ */
+public class GreenhouseAdminFacade {
+
+    /** Снимок всего, что сейчас лежит на диске. */
+<span class="nc" id="L24">    public record SystemState(List&lt;CycleRecord&gt; cycles, List&lt;IrrigationSlot&gt; slots,</span>
+                              List&lt;IrrigationRun&gt; runs, List&lt;DosageRecord&gt; dosages,
+                              List&lt;AlertService.Alert&gt; alerts, VentilationPolicy.Mode ventilationMode) {}
+
+    private final GreenhouseFacade facade;
+    private final CycleRepository cycles;
+    private final SlotRepository slots;
+    private final RunRepository runs;
+    private final DosageRepository dosages;
+    private final IrrigationController irrigation;
+    private final NutrientDispenser dispenser;
+
+    public GreenhouseAdminFacade(GreenhouseFacade facade, CycleRepository cycles, SlotRepository slots,
+                                 RunRepository runs, DosageRepository dosages,
+<span class="nc" id="L38">                                 IrrigationController irrigation, NutrientDispenser dispenser) {</span>
+<span class="nc" id="L39">        this.facade = facade;</span>
+<span class="nc" id="L40">        this.cycles = cycles;</span>
+<span class="nc" id="L41">        this.slots = slots;</span>
+<span class="nc" id="L42">        this.runs = runs;</span>
+<span class="nc" id="L43">        this.dosages = dosages;</span>
+<span class="nc" id="L44">        this.irrigation = irrigation;</span>
+<span class="nc" id="L45">        this.dispenser = dispenser;</span>
+<span class="nc" id="L46">    }</span>
+
+    public List&lt;CycleRecord&gt; listCycles() {
+<span class="nc" id="L49">        return cycles.findAll();</span>
+    }
+
+    /** Читает с диска состояние всех трёх подсистем и хода цепочек. */
+    public SystemState inspect() {
+<span class="nc" id="L54">        return new SystemState(</span>
+<span class="nc" id="L55">                cycles.findAll(),</span>
+<span class="nc" id="L56">                slots.findAll(),</span>
+<span class="nc" id="L57">                runs.findAll(),</span>
+<span class="nc" id="L58">                dosages.findAll(),</span>
+<span class="nc" id="L59">                dosages.findAllAlerts(),</span>
+<span class="nc" id="L60">                runs.loadVentilation().current());</span>
+    }
+
+    /** Ручной откат цикла по id. См. {@link GreenhouseFacade#compensate(long)}. */
+    public CycleRecord compensate(long cycleId) {
+<span class="nc" id="L65">        return facade.compensate(cycleId);</span>
+    }
+
+    /** Имитация отказа насоса: следующий шаг B завершится сбоем (откат A). */
+    public void simulatePumpFailure(boolean faulty) {
+<span class="nc" id="L70">        irrigation.simulatePumpFailure(faulty);</span>
+<span class="nc" id="L71">    }</span>
+
+    /** Имитация отказа дозатора: следующий шаг C завершится сбоем (откат B, затем A). */
+    public void simulateDispenserFailure(boolean faulty) {
+<span class="nc" id="L75">        dispenser.simulateDispenserFailure(faulty);</span>
+<span class="nc" id="L76">    }</span>
+
+    /** Полный сброс: очищает хранилища A, B, C и ход цепочек, снимает имитацию сбоев. */
+    public void resetAll() {
+<span class="nc" id="L80">        slots.clear();</span>
+<span class="nc" id="L81">        runs.clear();</span>
+<span class="nc" id="L82">        dosages.clear();</span>
+<span class="nc" id="L83">        cycles.clear();</span>
+<span class="nc" id="L84">        irrigation.simulatePumpFailure(false);</span>
+<span class="nc" id="L85">        dispenser.simulateDispenserFailure(false);</span>
+<span class="nc" id="L86">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

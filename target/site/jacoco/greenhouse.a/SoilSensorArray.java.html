@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SoilSensorArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.a</a> &gt; <span class="el_source">SoilSensorArray.java</span></div><h1>SoilSensorArray.java</h1><pre class="source lang-java linenums">package greenhouse.a;
+
+import java.util.Optional;
+import java.util.regex.Pattern;
+
+/**
+ * Сервис A: принимает показания датчиков влажности почвы и сохраняет их.
+ * В демо «датчик» — это ввод оператора в консоли (реального железа нет).
+ */
+public class SoilSensorArray {
+
+<span class="fc" id="L12">    private static final Pattern BED_ID = Pattern.compile(&quot;[A-Za-z]-\\d+&quot;);</span>
+
+    private final SlotRepository repository;
+
+<span class="fc" id="L16">    public SoilSensorArray(SlotRepository repository) {</span>
+<span class="fc" id="L17">        this.repository = repository;</span>
+<span class="fc" id="L18">    }</span>
+
+    /** Формат грядки: буква-дефис-число, например &quot;B-3&quot;. Бросает IllegalArgumentException. */
+    static void requireValidBedId(String bedId) {
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        if (bedId == null || !BED_ID.matcher(bedId).matches()) {</span>
+<span class="fc" id="L23">            throw new IllegalArgumentException(&quot;Invalid bed id '&quot; + bedId + &quot;', expected format like B-3&quot;);</span>
+        }
+<span class="fc" id="L25">    }</span>
+
+    public void recordMoisture(String bedId, double moisturePercent) {
+<span class="fc" id="L28">        requireValidBedId(bedId);</span>
+<span class="pc bpc" id="L29" title="1 of 6 branches missed.">        if (Double.isNaN(moisturePercent) || moisturePercent &lt; 0 || moisturePercent &gt; 100) {</span>
+<span class="fc" id="L30">            throw new IllegalArgumentException(&quot;Moisture must be within 0..100, got &quot; + moisturePercent);</span>
+        }
+<span class="fc" id="L32">        repository.saveReading(bedId, moisturePercent);</span>
+<span class="fc" id="L33">    }</span>
+
+    public Optional&lt;Double&gt; latestMoisture(String bedId) {
+<span class="fc" id="L36">        requireValidBedId(bedId);</span>
+<span class="fc" id="L37">        return repository.latestMoisture(bedId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

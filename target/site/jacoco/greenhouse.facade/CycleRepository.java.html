@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CycleRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.facade</a> &gt; <span class="el_source">CycleRepository.java</span></div><h1>CycleRepository.java</h1><pre class="source lang-java linenums">package greenhouse.facade;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Хранение хода цепочки на диске (таблица cycles в SQLite) — для восстановления после рестарта.
+ * Соединение открывается на каждую операцию, поэтому «рестарт» — это новый CycleRepository
+ * на тот же файл.
+ */
+public class CycleRepository {
+
+    /** Ошибка хранилища (не бизнес-ошибка). */
+    public static class StorageException extends RuntimeException {
+        public StorageException(String message, Throwable cause) {
+<span class="nc bnc" id="L24" title="All 4 branches missed.">            super(cause == null || cause.getMessage() == null ? message : message + &quot;: &quot; + cause.getMessage(), cause);</span>
+<span class="nc" id="L25">        }</span>
+    }
+
+    private static final String COLUMNS =
+            &quot;id, bed_id, crop, temperature, humidity, status, slot_id, run_id, dosage_id, alert_id, failure_reason&quot;;
+
+    private final String url;
+
+<span class="nc" id="L33">    public CycleRepository(String dbPath) {</span>
+<span class="nc" id="L34">        this.url = &quot;jdbc:sqlite:&quot; + dbPath;</span>
+<span class="nc" id="L35">        init();</span>
+<span class="nc" id="L36">    }</span>
+
+    private Connection open() throws SQLException {
+<span class="nc" id="L39">        return DriverManager.getConnection(url);</span>
+    }
+
+    private void init() {
+<span class="nc" id="L43">        try (Connection c = open(); Statement s = c.createStatement()) {</span>
+<span class="nc" id="L44">            s.execute(&quot;CREATE TABLE IF NOT EXISTS cycles (&quot;</span>
+                    + &quot;id INTEGER PRIMARY KEY AUTOINCREMENT, &quot;
+                    + &quot;bed_id TEXT NOT NULL, &quot;
+                    + &quot;crop TEXT NOT NULL, &quot;
+                    + &quot;temperature REAL NOT NULL, &quot;
+                    + &quot;humidity REAL NOT NULL, &quot;
+                    + &quot;status TEXT NOT NULL, &quot;
+                    + &quot;slot_id INTEGER NOT NULL, &quot;
+                    + &quot;run_id INTEGER, &quot;
+                    + &quot;dosage_id INTEGER, &quot;
+                    + &quot;alert_id INTEGER, &quot;
+                    + &quot;failure_reason TEXT)&quot;);
+<span class="nc" id="L56">        } catch (SQLException e) {</span>
+<span class="nc" id="L57">            throw new StorageException(&quot;Cannot initialise cycle storage&quot;, e);</span>
+<span class="nc" id="L58">        }</span>
+<span class="nc" id="L59">    }</span>
+
+    /** Вставляет новую запись (id == null) или обновляет изменяемые поля существующей. */
+    public void save(CycleRecord cycle) {
+<span class="nc" id="L63">        try (Connection c = open()) {</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            if (cycle.getId() == null) {</span>
+<span class="nc" id="L65">                try (PreparedStatement ps = c.prepareStatement(</span>
+                        &quot;INSERT INTO cycles(bed_id, crop, temperature, humidity, status, slot_id, &quot;
+                                + &quot;run_id, dosage_id, alert_id, failure_reason) &quot;
+                                + &quot;VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)&quot;,
+                        Statement.RETURN_GENERATED_KEYS)) {
+<span class="nc" id="L70">                    ps.setString(1, cycle.getBedId());</span>
+<span class="nc" id="L71">                    ps.setString(2, cycle.getCrop());</span>
+<span class="nc" id="L72">                    ps.setDouble(3, cycle.getTemperatureC());</span>
+<span class="nc" id="L73">                    ps.setDouble(4, cycle.getHumidityPercent());</span>
+<span class="nc" id="L74">                    ps.setString(5, cycle.getStatus().name());</span>
+<span class="nc" id="L75">                    ps.setLong(6, cycle.getSlotId());</span>
+<span class="nc" id="L76">                    setNullableLong(ps, 7, cycle.getRunId());</span>
+<span class="nc" id="L77">                    setNullableLong(ps, 8, cycle.getDosageId());</span>
+<span class="nc" id="L78">                    setNullableLong(ps, 9, cycle.getAlertId());</span>
+<span class="nc" id="L79">                    setNullableString(ps, 10, cycle.getFailureReason());</span>
+<span class="nc" id="L80">                    ps.executeUpdate();</span>
+<span class="nc" id="L81">                    try (ResultSet keys = ps.getGeneratedKeys()) {</span>
+<span class="nc" id="L82">                        keys.next();</span>
+<span class="nc" id="L83">                        cycle.assignId(keys.getLong(1));</span>
+                    }
+                }
+            } else {
+<span class="nc" id="L87">                try (PreparedStatement ps = c.prepareStatement(</span>
+                        &quot;UPDATE cycles SET status = ?, run_id = ?, dosage_id = ?, alert_id = ?, &quot;
+                                + &quot;failure_reason = ? WHERE id = ?&quot;)) {
+<span class="nc" id="L90">                    ps.setString(1, cycle.getStatus().name());</span>
+<span class="nc" id="L91">                    setNullableLong(ps, 2, cycle.getRunId());</span>
+<span class="nc" id="L92">                    setNullableLong(ps, 3, cycle.getDosageId());</span>
+<span class="nc" id="L93">                    setNullableLong(ps, 4, cycle.getAlertId());</span>
+<span class="nc" id="L94">                    setNullableString(ps, 5, cycle.getFailureReason());</span>
+<span class="nc" id="L95">                    ps.setLong(6, cycle.getId());</span>
+<span class="nc" id="L96">                    ps.executeUpdate();</span>
+                }
+            }
+<span class="nc" id="L99">        } catch (SQLException e) {</span>
+<span class="nc" id="L100">            throw new StorageException(&quot;Cannot save cycle&quot;, e);</span>
+<span class="nc" id="L101">        }</span>
+<span class="nc" id="L102">    }</span>
+
+    public Optional&lt;CycleRecord&gt; findById(long id) {
+<span class="nc" id="L105">        try (Connection c = open();</span>
+<span class="nc" id="L106">             PreparedStatement ps = c.prepareStatement(&quot;SELECT &quot; + COLUMNS + &quot; FROM cycles WHERE id = ?&quot;)) {</span>
+<span class="nc" id="L107">            ps.setLong(1, id);</span>
+<span class="nc" id="L108">            try (ResultSet rs = ps.executeQuery()) {</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">                return rs.next() ? Optional.of(map(rs)) : Optional.empty();</span>
+            }
+<span class="nc" id="L111">        } catch (SQLException e) {</span>
+<span class="nc" id="L112">            throw new StorageException(&quot;Cannot read cycle &quot; + id, e);</span>
+        }
+    }
+
+    public List&lt;CycleRecord&gt; findAll() {
+<span class="nc" id="L117">        return query(&quot;SELECT &quot; + COLUMNS + &quot; FROM cycles ORDER BY id&quot;);</span>
+    }
+
+    /** Незавершённые цепочки (PENDING_B / PENDING_C) — то, что оборвалось и ждёт решения. */
+    public List&lt;CycleRecord&gt; findInFlight() {
+<span class="nc" id="L122">        return query(&quot;SELECT &quot; + COLUMNS + &quot; FROM cycles WHERE status IN ('PENDING_B', 'PENDING_C') ORDER BY id&quot;);</span>
+    }
+
+    private List&lt;CycleRecord&gt; query(String sql) {
+<span class="nc" id="L126">        List&lt;CycleRecord&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L127">        try (Connection c = open();</span>
+<span class="nc" id="L128">             Statement s = c.createStatement();</span>
+<span class="nc" id="L129">             ResultSet rs = s.executeQuery(sql)) {</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">            while (rs.next()) {</span>
+<span class="nc" id="L131">                result.add(map(rs));</span>
+            }
+<span class="nc" id="L133">        } catch (SQLException e) {</span>
+<span class="nc" id="L134">            throw new StorageException(&quot;Cannot list cycles&quot;, e);</span>
+<span class="nc" id="L135">        }</span>
+<span class="nc" id="L136">        return result;</span>
+    }
+
+    private CycleRecord map(ResultSet rs) throws SQLException {
+<span class="nc" id="L140">        return CycleRecord.restore(</span>
+<span class="nc" id="L141">                rs.getLong(&quot;id&quot;),</span>
+<span class="nc" id="L142">                rs.getString(&quot;bed_id&quot;),</span>
+<span class="nc" id="L143">                rs.getString(&quot;crop&quot;),</span>
+<span class="nc" id="L144">                rs.getDouble(&quot;temperature&quot;),</span>
+<span class="nc" id="L145">                rs.getDouble(&quot;humidity&quot;),</span>
+<span class="nc" id="L146">                CycleRecord.Status.valueOf(rs.getString(&quot;status&quot;)),</span>
+<span class="nc" id="L147">                rs.getLong(&quot;slot_id&quot;),</span>
+<span class="nc" id="L148">                nullableLong(rs, &quot;run_id&quot;),</span>
+<span class="nc" id="L149">                nullableLong(rs, &quot;dosage_id&quot;),</span>
+<span class="nc" id="L150">                nullableLong(rs, &quot;alert_id&quot;),</span>
+<span class="nc" id="L151">                rs.getString(&quot;failure_reason&quot;));</span>
+    }
+
+    private static Long nullableLong(ResultSet rs, String column) throws SQLException {
+<span class="nc" id="L155">        long value = rs.getLong(column);</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        return rs.wasNull() ? null : value;</span>
+    }
+
+    private static void setNullableLong(PreparedStatement ps, int index, Long value) throws SQLException {
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L161">            ps.setNull(index, Types.INTEGER);</span>
+        } else {
+<span class="nc" id="L163">            ps.setLong(index, value);</span>
+        }
+<span class="nc" id="L165">    }</span>
+
+    private static void setNullableString(PreparedStatement ps, int index, String value) throws SQLException {
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L169">            ps.setNull(index, Types.VARCHAR);</span>
+        } else {
+<span class="nc" id="L171">            ps.setString(index, value);</span>
+        }
+<span class="nc" id="L173">    }</span>
+
+    /** Полный сброс хода цепочек (для CLI и тестов). */
+    public void clear() {
+<span class="nc" id="L177">        try (Connection c = open(); Statement s = c.createStatement()) {</span>
+<span class="nc" id="L178">            s.execute(&quot;DELETE FROM cycles&quot;);</span>
+<span class="nc" id="L179">            s.execute(&quot;DELETE FROM sqlite_sequence WHERE name = 'cycles'&quot;);</span>
+<span class="nc" id="L180">        } catch (SQLException e) {</span>
+<span class="nc" id="L181">            throw new StorageException(&quot;Cannot clear cycle storage&quot;, e);</span>
+<span class="nc" id="L182">        }</span>
+<span class="nc" id="L183">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

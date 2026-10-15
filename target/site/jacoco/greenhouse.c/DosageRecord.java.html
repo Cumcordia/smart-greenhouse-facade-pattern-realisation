@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ru"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DosageRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">smart-greenhouse</a> &gt; <a href="index.source.html" class="el_package">greenhouse.c</a> &gt; <span class="el_source">DosageRecord.java</span></div><h1>DosageRecord.java</h1><pre class="source lang-java linenums">package greenhouse.c;
+
+/**
+ * Сущность C: одна доза удобрения. Сама следит за допустимыми переходами статуса.
+ *
+ *   PLANNED --&gt; DISPENSED --&gt; REVERTED
+ *   PLANNED ---------------&gt; REVERTED
+ *
+ * REVERTED — конечное состояние.
+ */
+public class DosageRecord {
+
+<span class="fc" id="L13">    public enum Status { PLANNED, DISPENSED, REVERTED }</span>
+
+    private Long id;               // null, пока запись не сохранена в БД
+    private final String bedId;
+    private final DosageCalculator.Crop crop;
+    private final double waterLiters;
+    private final double grams;
+    private Status status;
+
+    private DosageRecord(Long id, String bedId, DosageCalculator.Crop crop,
+<span class="fc" id="L23">                         double waterLiters, double grams, Status status) {</span>
+<span class="fc" id="L24">        this.id = id;</span>
+<span class="fc" id="L25">        this.bedId = bedId;</span>
+<span class="fc" id="L26">        this.crop = crop;</span>
+<span class="fc" id="L27">        this.waterLiters = waterLiters;</span>
+<span class="fc" id="L28">        this.grams = grams;</span>
+<span class="fc" id="L29">        this.status = status;</span>
+<span class="fc" id="L30">    }</span>
+
+    /** Новая доза всегда начинается со статуса PLANNED. */
+    public static DosageRecord plan(String bedId, DosageCalculator.Crop crop, double waterLiters, double grams) {
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">        if (bedId == null || bedId.isBlank()) {</span>
+<span class="fc" id="L35">            throw new IllegalArgumentException(&quot;bedId must not be blank&quot;);</span>
+        }
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (crop == null) {</span>
+<span class="fc" id="L38">            throw new IllegalArgumentException(&quot;crop must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L40" title="All 4 branches covered.">        if (waterLiters &lt;= 0 || grams &lt;= 0) {</span>
+<span class="fc" id="L41">            throw new IllegalArgumentException(&quot;waterLiters and grams must be positive&quot;);</span>
+        }
+<span class="fc" id="L43">        return new DosageRecord(null, bedId, crop, waterLiters, grams, Status.PLANNED);</span>
+    }
+
+    /** Восстановление из хранилища — это уже сохранённое состояние, переходы не проверяются. */
+    static DosageRecord restore(long id, String bedId, DosageCalculator.Crop crop,
+                                double waterLiters, double grams, Status status) {
+<span class="fc" id="L49">        return new DosageRecord(id, bedId, crop, waterLiters, grams, status);</span>
+    }
+
+    public void dispense() {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (status != Status.PLANNED) {</span>
+<span class="fc" id="L54">            throw new IllegalStateException(&quot;Cannot dispense dosage in status &quot; + status);</span>
+        }
+<span class="fc" id="L56">        status = Status.DISPENSED;</span>
+<span class="fc" id="L57">    }</span>
+
+    public void revert() {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (status == Status.REVERTED) {</span>
+<span class="fc" id="L61">            throw new IllegalStateException(&quot;Dosage is already REVERTED&quot;);</span>
+        }
+<span class="fc" id="L63">        status = Status.REVERTED;</span>
+<span class="fc" id="L64">    }</span>
+
+    void assignId(long id) {
+<span class="fc" id="L67">        this.id = id;</span>
+<span class="fc" id="L68">    }</span>
+
+<span class="fc" id="L70">    public Long getId() { return id; }</span>
+<span class="fc" id="L71">    public String getBedId() { return bedId; }</span>
+<span class="fc" id="L72">    public DosageCalculator.Crop getCrop() { return crop; }</span>
+<span class="fc" id="L73">    public double getWaterLiters() { return waterLiters; }</span>
+<span class="fc" id="L74">    public double getGrams() { return grams; }</span>
+<span class="fc" id="L75">    public Status getStatus() { return status; }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L79">        return &quot;DosageRecord{id=&quot; + id + &quot;, bed=&quot; + bedId + &quot;, crop=&quot; + crop</span>
+                + &quot;, water=&quot; + waterLiters + &quot; L, grams=&quot; + grams + &quot;, status=&quot; + status + &quot;}&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
